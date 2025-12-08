@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Tournament {
+  id            Int       @id
+  name          String
+  location      String?
+  startDate     DateTime?
+  endDate       DateTime?
+  updatedAt     DateTime?
+  lastSyncedAt  DateTime?
+  events        Event[]
+  createdAt     DateTime  @default(now())
+  updatedRecord DateTime  @updatedAt
+}
+
+model Event {
+  id            Int              @id
+  tournamentId  Int
+  name          String
+  eventType     String?
+  displayOrder  Int?
+  updatedAt     DateTime?
+  lastSyncedAt  DateTime?
+  createdAt     DateTime         @default(now())
+  updatedRecord DateTime         @updatedAt
+
+  tournament    Tournament       @relation(fields: [tournamentId], references: [id])
+  categories    EventCategory[]
+  participants  EventParticipant[]
+  scores        EventScore[]
+
+  @@index([tournamentId])
+}
+
+model Archer {
+  id             Int               @id
+  firstName      String
+  lastName       String
+  conditionCode  String?
+  team           String?
+  alias          String?
+  meta           String?
+  createdAt      DateTime          @default(now())
+  updatedRecord  DateTime          @updatedAt
+
+  participants   EventParticipant[]
+  scores         EventScore[]
+
+  @@index([lastName, firstName])
+}
+
+model EventCategory {
+  id            Int              @id @default(autoincrement())
+  eventId       Int
+  name          String
+  displayOrder  Int?
+  cut           Int?
+  createdAt     DateTime         @default(now())
+  updatedRecord DateTime         @updatedAt
+
+  event         Event            @relation(fields: [eventId], references: [id])
+  participants  EventParticipant[]
+  scores        EventScore[]
+
+  @@unique([eventId, name])
+  @@index([eventId])
+}
+
+model EventParticipant {
+  eventId       Int
+  archerId      Int
+  categoryId    Int
+  createdAt     DateTime  @default(now())
+  updatedRecord DateTime  @updatedAt
+
+  event         Event         @relation(fields: [eventId], references: [id])
+  archer        Archer        @relation(fields: [archerId], references: [id])
+  category      EventCategory @relation(fields: [categoryId], references: [id])
+
+  @@id([eventId, archerId])
+  @@index([categoryId])
+}
+
+model EventScore {
+  eventId       Int
+  archerId      Int
+  categoryId    Int?
+  rawScore      String
+  total         Int
+  tens          Int
+  xCount        Int
+  nines         Int
+  arrows        Int
+  scoringRule   Int             @default(1)
+  tieBreak      String?
+  ranking       Int?
+  computedAt    DateTime        @default(now())
+  updatedRecord DateTime        @updatedAt
+
+  event         Event           @relation(fields: [eventId], references: [id])
+  archer        Archer          @relation(fields: [archerId], references: [id])
+  category      EventCategory?  @relation(fields: [categoryId], references: [id])
+
+  @@id([eventId, archerId])
+  @@index([eventId])
+  @@index([categoryId])
+}

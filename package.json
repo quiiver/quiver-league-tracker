@@ -1,0 +1,43 @@
+{
+  "name": "archeryleague-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Archery league tracker: ingest remote results, compute leaderboards, expose API and web dashboard.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "packageManager": "npm@11.5.1",
+  "scripts": {
+    "build": "tsc -b packages/core packages/cli apps/api apps/web",
+    "clean": "rimraf \"{apps,packages}/*/dist\"",
+    "dev": "run-p dev:api dev:web",
+    "dev:api": "npm run dev --workspace @archeryleague/api",
+    "dev:web": "npm run dev --workspace @archeryleague/web",
+    "lint": "eslint \"{apps,packages}/**/*.{ts,tsx}\" --max-warnings=0",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@flydotio/dockerfile": "^0.7.10",
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "npm-run-all": "^4.1.5",
+    "prettier": "^3.1.0",
+    "prisma": "^5.9.0",
+    "rimraf": "^5.0.0",
+    "ts-node": "^10.9.2",
+    "tslib": "^2.6.2",
+    "tsx": "^4.7.0",
+    "typescript": "~5.5.4"
+  }
+}
