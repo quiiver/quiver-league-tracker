@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import LeaderboardTable from '../components/LeaderboardTable';
 import { useTournamentLeaderboard } from '../hooks/useTournamentLeaderboard';
 import { applyDropLowestRule } from '../utils/leaderboardAdjustments';
+import { set } from 'zod';
 
 export default function TournamentLeaderboardPage(): JSX.Element {
   const params = useParams();
@@ -11,7 +12,7 @@ export default function TournamentLeaderboardPage(): JSX.Element {
     tournamentId,
     Number.isFinite(tournamentId)
   );
-  const [dropLowestTwo, setDropLowestTwo] = useState(false);
+  const [dropLowestTwo, setDropLowestTwo] = useState(data && data.leaderboard?.length >= 4);
   const adjustedLeaderboard = useMemo(() => {
     const entries = data?.leaderboard ?? [];
     return dropLowestTwo ? applyDropLowestRule(entries, 2) : entries;

@@ -14,7 +14,7 @@ export default function TournamentCategoryPage(): JSX.Element {
     tournamentId,
     Number.isFinite(tournamentId)
   );
-  const [dropLowestTwo, setDropLowestTwo] = useState(false);
+  const [dropLowestTwo, setDropLowestTwo] = useState(data && data.leaderboard?.length >= 4);
   const adjustedLeaderboard = useMemo(() => {
     const entries = data?.leaderboard ?? [];
     return dropLowestTwo ? applyDropLowestRule(entries, 2) : entries;
