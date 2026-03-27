@@ -1,5 +1,5 @@
 import { Prisma, PrismaClient } from '@prisma/client';
-import type { EventScore } from '@prisma/client';
+import type { Archer as PrismaArcher, EventScore } from '@prisma/client';
 import { addMilliseconds } from 'date-fns';
 import { getCoreConfig } from '../config';
 import { getPrismaClient } from '../db/client';
@@ -15,6 +15,7 @@ type ConstructorOptions = {
   prisma?: PrismaClient;
   apiClient?: ResultsApiClient;
   scoringRule?: number;
+  canonicalOverrides?: Record<number, number>;
 };
 
 export interface SyncEventResult {
@@ -30,16 +31,28 @@ export interface SyncTournamentResult {
   syncedAt: Date;
 }
 
+export interface DeleteTournamentResult {
+  tournamentId: number;
+  existed: boolean;
+  deletedEvents: number;
+  deletedCategories: number;
+  deletedParticipants: number;
+  deletedScores: number;
+  deletedTournament: number;
+}
+
 export class IngestionService {
   private readonly prisma: PrismaClient;
   private readonly apiClient: ResultsApiClient;
   private readonly scoringRule: number;
+  private readonly canonicalOverrides: Readonly<Record<number, number>>;
 
   constructor(options: ConstructorOptions = {}) {
     const config = getCoreConfig();
     this.prisma = options.prisma ?? getPrismaClient();
     this.apiClient = options.apiClient ?? new ResultsApiClient({ baseUrl: config.resultsApiBaseUrl });
     this.scoringRule = options.scoringRule ?? config.scoringRule;
+    this.canonicalOverrides = options.canonicalOverrides ?? {};
   }
 
   async syncTournament(tournamentId: number): Promise<SyncTournamentResult> {
@@ -99,9 +112,7 @@ export class IngestionService {
       }
     }
 
-    const eventIds = tournament.events.map(
-      (eventSummary: (typeof tournament.events)[number]) => eventSummary.id
-    );
+    const eventIds = tournament.events.map((eventSummary) => eventSummary.id);
 
     return { tournamentId: tournament.id, eventIds, syncedAt };
   }
@@ -170,6 +181,64 @@ export class IngestionService {
     };
   }
 
+  async deleteTournament(tournamentId: number): Promise<DeleteTournamentResult> {
+    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const existingTournament = await tx.tournament.findUnique({
+        where: { id: tournamentId },
+        select: { id: true }
+      });
+
+      if (!existingTournament) {
+        return {
+          tournamentId,
+          existed: false,
+          deletedEvents: 0,
+          deletedCategories: 0,
+          deletedParticipants: 0,
+          deletedScores: 0,
+          deletedTournament: 0
+        };
+      }
+
+      const events = await tx.event.findMany({
+        where: { tournamentId },
+        select: { id: true }
+      });
+      const eventIds = events.map((event) => event.id);
+
+      const [scoresResult, participantsResult, categoriesResult] = await Promise.all([
+        tx.eventScore.deleteMany({ where: { eventId: { in: eventIds } } }),
+        tx.eventParticipant.deleteMany({ where: { eventId: { in: eventIds } } }),
+        tx.eventCategory.deleteMany({ where: { eventId: { in: eventIds } } })
+      ]);
+
+      const eventsResult = await tx.event.deleteMany({ where: { tournamentId } });
+      const tournamentResult = await tx.tournament.deleteMany({ where: { id: tournamentId } });
+
+      logger.info(
+        {
+          tournamentId,
+          deletedTournament: tournamentResult.count,
+          deletedEvents: eventsResult.count,
+          deletedCategories: categoriesResult.count,
+          deletedParticipants: participantsResult.count,
+          deletedScores: scoresResult.count
+        },
+        'tournament deleted'
+      );
+
+      return {
+        tournamentId,
+        existed: true,
+        deletedEvents: eventsResult.count,
+        deletedCategories: categoriesResult.count,
+        deletedParticipants: participantsResult.count,
+        deletedScores: scoresResult.count,
+        deletedTournament: tournamentResult.count
+      };
+    });
+  }
+
   private async upsertCategories(
     tx: TransactionClient,
     eventId: number,
@@ -214,6 +283,7 @@ export class IngestionService {
   ): Promise<Map<number, number>> {
     const participantCategoryMap = new Map<number, number>();
     const activeArcherIds: number[] = [];
+    const canonicalCache = new Map<string, number>();
 
     const participantEntries = Object.entries(payload.rps) as Array<
       [string, EventResponse['rps'][string]]
@@ -228,7 +298,7 @@ export class IngestionService {
         tieBreakSource: participant.tbs ?? null
       };
       const serializedMeta = JSON.stringify(metaPayload);
-      await tx.archer.upsert({
+      const archerRecord = await tx.archer.upsert({
         where: { id: archerId },
         update: {
           firstName: participant.fnm,
@@ -247,6 +317,11 @@ export class IngestionService {
           alias: participant.alt ?? undefined,
           meta: serializedMeta
         }
+      });
+
+      await this.ensureCanonicalArcherLink(tx, {
+        archer: archerRecord,
+        normalizedKeyCache: canonicalCache
       });
 
       const categoryId = findCategoryIdForArcher(archerId, payload, categoryLookup);
@@ -362,6 +437,140 @@ export class IngestionService {
       }
     }
   }
+
+  private async ensureCanonicalArcherLink(
+    tx: TransactionClient,
+    options: {
+      archer: Pick<PrismaArcher, 'id' | 'canonicalArcherId' | 'firstName' | 'lastName' | 'team'>;
+      normalizedKeyCache: Map<string, number>;
+    }
+  ): Promise<number | null> {
+    const { archer, normalizedKeyCache } = options;
+
+    if (this.canonicalOverrides[archer.id]) {
+      const canonicalId = this.canonicalOverrides[archer.id];
+      const canonical = await tx.canonicalArcher.findUnique({ where: { id: canonicalId } });
+      if (!canonical) {
+        throw new Error(`canonical override ${canonicalId} for archer ${archer.id} does not exist`);
+      }
+      if (archer.canonicalArcherId !== canonicalId) {
+        logger.debug(
+          {
+            archerId: archer.id,
+            fromCanonicalArcherId: archer.canonicalArcherId,
+            toCanonicalArcherId: canonicalId,
+            normalizedKey: canonical.normalizedKey,
+            reason: 'manual-override'
+          },
+          'merging archer profile'
+        );
+        await tx.archer.update({
+          where: { id: archer.id },
+          data: {
+            canonicalArcherId: canonicalId,
+            canonicalLinkMethod: 'manual_override',
+            canonicalLinkUpdatedAt: new Date()
+          }
+        });
+      }
+      return canonicalId;
+    }
+
+    if (!archer.firstName && !archer.lastName) {
+      return archer.canonicalArcherId ?? null;
+    }
+
+    const normalizedKey = buildCanonicalKey(archer.firstName, archer.lastName);
+
+    if (normalizedKeyCache.has(normalizedKey)) {
+      const canonicalId = normalizedKeyCache.get(normalizedKey)!;
+      if (archer.canonicalArcherId !== canonicalId) {
+        logger.debug(
+          {
+            archerId: archer.id,
+            fromCanonicalArcherId: archer.canonicalArcherId,
+            toCanonicalArcherId: canonicalId,
+            normalizedKey,
+            reason: 'normalized-key-cache'
+          },
+          'merging archer profile'
+        );
+        await tx.archer.update({
+          where: { id: archer.id },
+          data: {
+            canonicalArcherId: canonicalId,
+            canonicalLinkMethod: 'auto_name_match',
+            canonicalLinkUpdatedAt: new Date()
+          }
+        });
+      }
+      return canonicalId;
+    }
+
+    let canonical = await tx.canonicalArcher.findUnique({ where: { normalizedKey } });
+
+    if (!canonical) {
+      canonical = await tx.canonicalArcher.create({
+        data: {
+          normalizedKey,
+          primaryFirstName: stripParenthetical(archer.firstName),
+          primaryLastName: stripParenthetical(archer.lastName),
+          primaryTeam: archer.team ?? null
+        }
+      });
+    }
+
+    normalizedKeyCache.set(normalizedKey, canonical.id);
+
+    const updatePayload: {
+      primaryFirstName?: string | null;
+      primaryLastName?: string | null;
+      primaryTeam?: string | null;
+    } = {};
+
+    const cleanFirstName = stripParenthetical(archer.firstName);
+    const cleanLastName = stripParenthetical(archer.lastName);
+
+    if (!canonical.primaryFirstName && cleanFirstName) {
+      updatePayload.primaryFirstName = cleanFirstName;
+    }
+    if (!canonical.primaryLastName && cleanLastName) {
+      updatePayload.primaryLastName = cleanLastName;
+    }
+    if (archer.team && (!canonical.primaryTeam || canonical.primaryTeam.length < archer.team.length)) {
+      updatePayload.primaryTeam = archer.team;
+    }
+
+    if (Object.keys(updatePayload).length > 0) {
+      canonical = await tx.canonicalArcher.update({
+        where: { id: canonical.id },
+        data: updatePayload
+      });
+    }
+
+    if (archer.canonicalArcherId !== canonical.id) {
+      logger.debug(
+        {
+          archerId: archer.id,
+          fromCanonicalArcherId: archer.canonicalArcherId,
+          toCanonicalArcherId: canonical.id,
+          normalizedKey,
+          reason: 'normalized-key-match'
+        },
+        'merging archer profile'
+      );
+      await tx.archer.update({
+        where: { id: archer.id },
+        data: {
+          canonicalArcherId: canonical.id,
+          canonicalLinkMethod: 'auto_name_match',
+          canonicalLinkUpdatedAt: new Date()
+        }
+      });
+    }
+
+    return canonical.id;
+  }
 }
 
 function toDate(value: string | null | undefined): Date | null {
@@ -396,4 +605,33 @@ function findCategoryIdForArcher(
   }
 
   throw new Error(`no category found for archer ${archerId}`);
+}
+
+function normalizeComponent(value: string | null): string {
+  if (!value) {
+    return '';
+  }
+
+  // Drop category suffixes like " (C)" before normalizing.
+  const withoutParenthetical = value.replace(/\([^)]*\)/g, ' ');
+
+  return withoutParenthetical
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function stripParenthetical(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  return value.replace(/\s*\([^)]*\)\s*/g, ' ').trim() || null;
+}
+
+function buildCanonicalKey(firstName: string | null, lastName: string | null): string {
+  const normalizedFirst = normalizeComponent(firstName);
+  const normalizedLast = normalizeComponent(lastName);
+
+  return `${normalizedFirst}|${normalizedLast}`;
 }

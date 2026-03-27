@@ -1,8 +1,10 @@
+import { ensureDatabaseMigrated } from '@archeryleague/core';
 import { buildServer } from './app';
 import { HOST, PORT } from './env';
 
 async function start(): Promise<void> {
   try {
+    await ensureDatabaseMigrated();
     const server = await buildServer();
     await server.listen({ port: PORT, host: HOST });
     server.log.info(`Server running on http://${HOST}:${PORT}`);

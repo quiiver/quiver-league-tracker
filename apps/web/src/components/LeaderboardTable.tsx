@@ -26,7 +26,11 @@ export default function LeaderboardTable({ data }: LeaderboardTableProps): JSX.E
             <tr key={entry.archerId}>
               <td>{entry.rank}</td>
               <td>
-                <Link to={`/archers/${entry.archerId}`}>{entry.fullName}</Link>
+                <Link
+                  to={entry.canonicalArcherId ? `/profiles/${entry.canonicalArcherId}` : `/archers/${entry.archerId}`}
+                >
+                  {entry.fullName}
+                </Link>
               </td>
               <td>{entry.totals.total}</td>
               <td>{entry.totals.tens}</td>

@@ -81,21 +81,42 @@ function adjustEntryTotals(entry: LeaderboardEntry, dropCount: number): Leaderbo
 }
 
 function rankEntries(entries: LeaderboardEntry[]): LeaderboardEntry[] {
-  return entries
-    .slice()
-    .sort((a, b) => {
-      if (b.totals.total !== a.totals.total) {
-        return b.totals.total - a.totals.total;
-      }
-      if (b.totals.tens !== a.totals.tens) {
-        return b.totals.tens - a.totals.tens;
-      }
-      if (b.totals.xCount !== a.totals.xCount) {
-        return b.totals.xCount - a.totals.xCount;
-      }
-      return a.fullName.localeCompare(b.fullName);
-    })
-    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+  const sorted = sortEntries(entries);
+  let previous: LeaderboardEntry | null = null;
+  let previousRank = 0;
+
+  return sorted.map((entry, index) => {
+    const rank =
+      previous &&
+      previous.totals.total === entry.totals.total &&
+      previous.totals.tens === entry.totals.tens &&
+      previous.totals.xCount === entry.totals.xCount
+        ? previousRank
+        : index + 1;
+
+    previous = entry;
+    previousRank = rank;
+    return { ...entry, rank };
+  });
+}
+
+export function sortEntries(entries: LeaderboardEntry[]): LeaderboardEntry[] {
+  return entries.slice().sort((a, b) => {
+    if (b.totals.total !== a.totals.total) {
+      return b.totals.total - a.totals.total;
+    }
+    if (b.totals.tens !== a.totals.tens) {
+      return b.totals.tens - a.totals.tens;
+    }
+    if (b.totals.xCount !== a.totals.xCount) {
+      return b.totals.xCount - a.totals.xCount;
+    }
+    return a.fullName.localeCompare(b.fullName);
+  });
+}
+
+export function assignCompetitionRanks(entries: LeaderboardEntry[]): LeaderboardEntry[] {
+  return rankEntries(entries);
 }
 
 export function applyDropLowestRule(

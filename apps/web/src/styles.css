@@ -6,6 +6,22 @@
   color: #e2e8f0;
 }
 
+
+@font-face {
+  font-family: 'PP Gatwick Ultralight';
+  font-style: normal;
+  font-weight: normal;
+  src: local('PP Gatwick Ultralight'), url('/PPGatwick-Ultralight.woff') format('woff');
+}
+  
+
+@font-face {
+  font-family: 'PP Gatwick Bold';
+  font-style: normal;
+  font-weight: normal;
+  src: local('PP Gatwick Bold'), url('/PPGatwick-Bold.woff') format('woff');
+}
+
 body {
   margin: 0;
 }
@@ -17,6 +33,23 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+a.table-link {
+  color: rgba(94, 234, 212, 0.95);
+}
+
+a.table-link:hover {
+  text-decoration: underline;
+}
+
+.link-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .layout {
@@ -52,6 +85,7 @@ nav {
 
 nav a.brand {
   font-weight: 700;
+  font-family: 'PP Gatwick Bold', sans-serif;
   font-size: 1.25rem;
   letter-spacing: 0.03em;
 }
@@ -66,13 +100,43 @@ nav .links {
 h1,
 .h1 {
   font-size: 2.2rem;
+  font-family: 'PP Gatwick Bold', sans-serif;
   margin-bottom: 1rem;
 }
 
 h2,
 .h2 {
   font-size: 1.6rem;
+  font-family: 'PP Gatwick Bold', sans-serif;
   margin: 2rem 0 1rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.85rem;
+}
+
+.stat-box {
+  border-radius: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.72);
+  padding: 0.8rem 0.9rem;
+}
+
+.stat-label {
+  color: rgba(148, 163, 184, 0.85);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-value {
+  margin-top: 0.3rem;
+  font-size: 1.3rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: rgba(226, 232, 240, 0.98);
 }
 
 .card-grid {
@@ -90,6 +154,7 @@ h2,
 }
 
 .card h3 {
+  font-family: 'PP Gatwick Bold', sans-serif;
   margin: 0 0 0.5rem;
   font-size: 1.2rem;
 }
@@ -124,6 +189,20 @@ th {
 
 tr:last-child td {
   border-bottom: none;
+}
+
+.tournament-row {
+  background: rgba(30, 41, 59, 0.4);
+  font-weight: 600;
+}
+
+.tournament-row td {
+  border-top: 2px solid rgba(148, 163, 184, 0.15);
+}
+
+.event-row td {
+  font-size: 0.9rem;
+  color: rgba(203, 213, 225, 0.95);
 }
 
 .badge {

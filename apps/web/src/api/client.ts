@@ -1,5 +1,6 @@
 import type {
   ArcherProfileResponse,
+  CanonicalArcherProfileResponse,
   EventLeaderboardResponse,
   TournamentLeaderboardResponse,
   TournamentSummary
@@ -44,4 +45,10 @@ export function fetchArcherProfile(
 ): Promise<ArcherProfileResponse> {
   const search = tournamentId ? `?tournamentId=${tournamentId}` : '';
   return request<ArcherProfileResponse>(`/api/archers/${archerId}${search}`);
+}
+
+export function fetchCanonicalArcherProfile(
+  canonicalArcherId: number
+): Promise<CanonicalArcherProfileResponse> {
+  return request<CanonicalArcherProfileResponse>(`/api/canonical-archers/${canonicalArcherId}`);
 }

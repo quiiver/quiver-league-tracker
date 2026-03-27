@@ -4,6 +4,7 @@ import TournamentLeaderboardPage from './pages/TournamentLeaderboardPage';
 import TournamentCategoryPage from './pages/TournamentCategoryPage';
 import EventLeaderboardPage from './pages/EventLeaderboardPage';
 import ArcherProfilePage from './pages/ArcherProfilePage';
+import CanonicalArcherProfilePage from './pages/CanonicalArcherProfilePage';
 
 export default function App(): JSX.Element {
   return (
@@ -35,6 +36,7 @@ export default function App(): JSX.Element {
           />
           <Route path="/events/:eventId" element={<EventLeaderboardPage />} />
           <Route path="/archers/:archerId" element={<ArcherProfilePage />} />
+          <Route path="/profiles/:canonicalArcherId" element={<CanonicalArcherProfilePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

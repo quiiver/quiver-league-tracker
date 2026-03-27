@@ -72,6 +72,34 @@ program
   });
 
 program
+  .command('delete:tournament')
+  .alias('delete-tournament')
+  .argument('<tournamentId>', 'Tournament identifier')
+  .description('Delete a tournament and all related events, participants, categories, and scores')
+  .action(async (tournamentIdText: string) => {
+    const tournamentId = Number.parseInt(tournamentIdText, 10);
+    if (Number.isNaN(tournamentId)) {
+      throw new Error('tournamentId must be numeric');
+    }
+
+    const spinner = ora(`Deleting tournament ${tournamentId}…`).start();
+    try {
+      const result = await ingestionService.deleteTournament(tournamentId);
+      if (!result.existed) {
+        spinner.warn(`Tournament ${tournamentId} does not exist`);
+        return;
+      }
+
+      spinner.succeed(
+        `Tournament ${tournamentId} deleted (${result.deletedEvents} events, ${result.deletedParticipants} participants, ${result.deletedScores} scores)`
+      );
+    } catch (error) {
+      spinner.fail(`Failed to delete tournament ${tournamentId}`);
+      handleError(error);
+    }
+  });
+
+program
   .command('leaderboard:tournament')
   .alias('leaderboard-tournament')
   .argument('<tournamentId>', 'Tournament identifier')

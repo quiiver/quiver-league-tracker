@@ -147,6 +147,19 @@ export async function buildServer(): Promise<FastifyInstance> {
   );
 
   app.get(
+    '/api/canonical-archers/:id',
+    {
+      schema: {
+        params: IdParamSchema
+      }
+    },
+    async (request: FastifyRequest<{ Params: z.infer<typeof IdParamSchema> }>) => {
+      const { id } = request.params;
+      return leaderboardService.getCanonicalArcherProfile(id);
+    }
+  );
+
+  app.get(
     '/api/tournaments/:id/events',
     {
       schema: {

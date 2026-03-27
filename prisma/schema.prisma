@@ -40,20 +40,37 @@ model Event {
 }
 
 model Archer {
-  id             Int               @id
-  firstName      String
-  lastName       String
-  conditionCode  String?
-  team           String?
-  alias          String?
-  meta           String?
-  createdAt      DateTime          @default(now())
-  updatedRecord  DateTime          @updatedAt
+  id                 Int               @id
+  canonicalArcherId  Int?
+  canonicalLinkMethod String?
+  canonicalLinkUpdatedAt DateTime?
+  firstName          String
+  lastName           String
+  conditionCode      String?
+  team               String?
+  alias              String?
+  meta               String?
+  createdAt          DateTime          @default(now())
+  updatedRecord      DateTime          @updatedAt
 
-  participants   EventParticipant[]
-  scores         EventScore[]
+  canonicalArcher    CanonicalArcher?  @relation(fields: [canonicalArcherId], references: [id])
+  participants       EventParticipant[]
+  scores             EventScore[]
 
   @@index([lastName, firstName])
+  @@index([canonicalArcherId])
+}
+
+model CanonicalArcher {
+  id                Int       @id @default(autoincrement())
+  normalizedKey     String    @unique
+  primaryFirstName  String?
+  primaryLastName   String?
+  primaryTeam       String?
+  createdAt         DateTime  @default(now())
+  updatedRecord     DateTime  @updatedAt
+
+  archers           Archer[]
 }
 
 model EventCategory {

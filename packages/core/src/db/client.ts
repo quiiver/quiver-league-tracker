@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../logger';
+import { resolveProjectRoot } from './projectRoot';
 
 export type PrismaClientFactoryOptions = {
   logQueries?: boolean;
@@ -10,33 +11,7 @@ export type PrismaClientFactoryOptions = {
 let prismaSingleton: PrismaClient | null = null;
 
 function ensureDatabaseUrl(): void {
-  let current = __dirname;
-  let attempts = 0;
-  const maxAttempts = 10;
-  let lastPackageDir: string | null = null;
-
-  while (attempts < maxAttempts) {
-    const packageJsonPath = path.join(current, 'package.json');
-    if (fs.existsSync(packageJsonPath)) {
-      lastPackageDir = current;
-      try {
-        const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as Record<string, unknown>;
-        if (Array.isArray(pkg.workspaces) || typeof pkg.workspaces === 'object') {
-          break;
-        }
-      } catch (error) {
-        // ignore JSON parse issues and continue walking up
-      }
-    }
-    const parent = path.dirname(current);
-    if (parent === current) {
-      break;
-    }
-    current = parent;
-    attempts += 1;
-  }
-
-  const projectRoot = fs.existsSync(path.join(current, 'package.json')) ? current : lastPackageDir ?? current;
+  const projectRoot = resolveProjectRoot(__dirname);
   const existing = process.env.DATABASE_URL;
 
   if (existing) {

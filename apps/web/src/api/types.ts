@@ -16,6 +16,7 @@ export interface TournamentEventSummary {
 
 export interface LeaderboardEntry {
   archerId: number;
+  canonicalArcherId: number | null;
   fullName: string;
   conditionCode: string | null;
   team: string | null;
@@ -73,6 +74,7 @@ export interface EventCategoryLeaderboard {
   categoryName: string;
   scores: Array<{
     archerId: number;
+    canonicalArcherId: number | null;
     fullName: string;
     total: number;
     tens: number;
@@ -100,6 +102,7 @@ export interface EventLeaderboardResponse {
 export interface ArcherProfileResponse {
   archer: {
     id: number;
+    canonicalArcherId: number | null;
     firstName: string;
     lastName: string;
     conditionCode: string | null;
@@ -120,11 +123,60 @@ export interface ArcherProfileResponse {
     eventName: string;
     tournamentId: number;
     tournamentName: string;
+    canonicalArcherId: number | null;
     total: number;
+    tens: number;
+    xCount: number;
+    nines: number;
     ranking: number | null;
     categoryName: string | null;
     tieBreak: Array<{ label: string; value: number }> | null;
     rawScore: string;
     arrows: number;
+  }>;
+}
+
+export interface CanonicalArcherProfileResponse {
+  canonicalArcher: {
+    id: number;
+    primaryFirstName: string | null;
+    primaryLastName: string | null;
+    primaryTeam: string | null;
+    normalizedKey: string;
+  };
+  linkedArchers: Array<{
+    id: number;
+    firstName: string;
+    lastName: string;
+    team: string | null;
+  }>;
+  totals: {
+    total: number;
+    tens: number;
+    xCount: number;
+    nines: number;
+    arrows: number;
+    eventsShot: number;
+    tournamentsShot: number;
+    average: number;
+    best: number;
+    worst: number;
+  };
+  tournaments: Array<{
+    tournamentId: number;
+    tournamentName: string;
+    eventsShot: number;
+    totals: {
+      total: number;
+      tens: number;
+      xCount: number;
+      nines: number;
+      arrows: number;
+    };
+    average: number;
+    best: number;
+    worst: number;
+    latestRanking: number | null;
+    lastEventDate: string | null;
   }>;
 }

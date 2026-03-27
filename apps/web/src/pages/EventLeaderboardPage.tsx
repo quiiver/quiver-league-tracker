@@ -45,7 +45,11 @@ export default function EventLeaderboardPage(): JSX.Element {
                   <tr key={score.archerId}>
                     <td>{score.ranking ?? '–'}</td>
                     <td>
-                      <Link to={`/archers/${score.archerId}`}>{score.fullName}</Link>
+                      <Link
+                        to={score.canonicalArcherId ? `/profiles/${score.canonicalArcherId}` : `/archers/${score.archerId}`}
+                      >
+                        {score.fullName}
+                      </Link>
                     </td>
                     <td>{score.total}</td>
                     <td>{score.tens}</td>

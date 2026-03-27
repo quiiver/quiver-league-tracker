@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import LeaderboardTable from '../components/LeaderboardTable';
 import { useTournamentLeaderboard } from '../hooks/useTournamentLeaderboard';
 import type { LeaderboardEntry } from '../api/types';
-import { applyDropLowestRule } from '../utils/leaderboardAdjustments';
+import { applyDropLowestRule, assignCompetitionRanks, sortEntries } from '../utils/leaderboardAdjustments';
 
 const FALLBACK_CATEGORY_NAME = 'Uncategorized';
 
@@ -14,7 +14,7 @@ export default function TournamentCategoryPage(): JSX.Element {
     tournamentId,
     Number.isFinite(tournamentId)
   );
-  const [dropLowestTwo, setDropLowestTwo] = useState(data && data.leaderboard?.length >= 4);
+  const [dropLowestTwo, setDropLowestTwo] = useState(false);
   const adjustedLeaderboard = useMemo(() => {
     const entries = data?.leaderboard ?? [];
     return dropLowestTwo ? applyDropLowestRule(entries, 2) : entries;
@@ -22,34 +22,57 @@ export default function TournamentCategoryPage(): JSX.Element {
 
   const groupedLeaderboards = useMemo(() => {
     const leaderboard = adjustedLeaderboard;
-    const groups = new Map<string, LeaderboardEntry[]>();
+    const groups = new Map<string, Map<number, LeaderboardEntry>>();
 
     for (const entry of leaderboard) {
-      const categoryName = entry.latestCategory ?? FALLBACK_CATEGORY_NAME;
-      const bucket = groups.get(categoryName);
-      if (bucket) {
-        bucket.push(entry);
-      } else {
-        groups.set(categoryName, [entry]);
+      // Extract all unique categories from breakdown
+      const categoriesInBreakdown = new Set(
+        entry.breakdown.map((b) => b.categoryName).filter((cat): cat is string => cat !== null)
+      );
+
+      // If no categories in breakdown, use latestCategory
+      const categories = categoriesInBreakdown.size > 0 
+        ? Array.from(categoriesInBreakdown)
+        : [entry.latestCategory ?? FALLBACK_CATEGORY_NAME];
+
+      // Add entry to each category it participated in
+      for (const categoryName of categories) {
+        if (!groups.has(categoryName)) {
+          groups.set(categoryName, new Map());
+        }
+        const categoryMap = groups.get(categoryName)!;
+        
+        // Only include breakdown items for this specific category
+        const filteredBreakdown = entry.breakdown.filter(b => b.categoryName === categoryName);
+        
+        // Calculate totals for just this category
+        const categoryTotals = filteredBreakdown.reduce(
+          (acc, b) => ({
+            total: acc.total + b.total,
+            tens: acc.tens + b.tens,
+            xCount: acc.xCount + b.xCount,
+            nines: acc.nines + b.nines,
+            arrows: acc.arrows + b.arrows
+          }),
+          { total: 0, tens: 0, xCount: 0, nines: 0, arrows: 0 }
+        );
+
+        const categoryEntry = {
+          ...entry,
+          totals: categoryTotals,
+          eventsShot: filteredBreakdown.length,
+          breakdown: filteredBreakdown,
+          average: filteredBreakdown.length > 0 ? categoryTotals.total / filteredBreakdown.length : 0
+        };
+
+        categoryMap.set(entry.canonicalArcherId ?? entry.archerId, categoryEntry);
       }
     }
 
     return Array.from(groups.entries())
-      .map(([categoryName, entries]) => {
-        const sorted = [...entries].sort((a, b) => {
-          if (b.totals.total !== a.totals.total) {
-            return b.totals.total - a.totals.total;
-          }
-          if (b.totals.tens !== a.totals.tens) {
-            return b.totals.tens - a.totals.tens;
-          }
-          return b.totals.xCount - a.totals.xCount;
-        });
-
-        const normalized = sorted.map((entry, index) => ({
-          ...entry,
-          rank: index + 1
-        }));
+      .map(([categoryName, entryMap]) => {
+        const entries = Array.from(entryMap.values());
+        const normalized = assignCompetitionRanks(sortEntries(entries));
 
         return { categoryName, entries: normalized };
       })
@@ -76,11 +99,6 @@ export default function TournamentCategoryPage(): JSX.Element {
           {data.tournament.location ?? 'Location TBA'} · Last sync:{' '}
           {formatRelative(data.tournament.lastSyncedAt)}
         </p>
-        <div style={{ marginBottom: '1.5rem' }}>
-          <Link className="badge" to={`/tournaments/${data.tournament.id}/overall`}>
-            View overall leaderboard
-          </Link>
-        </div>
         <p className="text-muted">No leaderboard data available yet.</p>
       </section>
     );
@@ -93,11 +111,6 @@ export default function TournamentCategoryPage(): JSX.Element {
         {data.tournament.location ?? 'Location TBA'} · Last sync:{' '}
         {formatRelative(data.tournament.lastSyncedAt)}
       </p>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <Link className="badge" to={`/tournaments/${data.tournament.id}/overall`}>
-          View overall leaderboard
-        </Link>
-      </div>
 
       <div className="controls">
         <button

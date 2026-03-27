@@ -59,6 +59,13 @@ ArcheryLeague Tracker ingests archery league results from the public Results API
 - `apps/web` – Vite + React dashboard for tournaments, events, and archer profiles.
 - `prisma` – Prisma schema and migrations.
 
+## Canonical Archer Profiles
+
+- Canonical archer profiles are a small-club heuristic for consolidating one person's results across multiple events and classes.
+- The current auto-link strategy is based on normalized first and last name matching, with parenthetical suffixes removed.
+- This is intentionally pragmatic rather than a general-purpose identity model; same-name collisions are considered low-frequency but possible.
+- Canonical links should remain auditable and correctable. Auto-generated links are recorded separately from manual overrides so operators can inspect and repair bad merges as the dataset grows.
+
 ## CLI Usage
 
 ```bash

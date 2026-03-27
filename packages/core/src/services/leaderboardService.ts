@@ -4,13 +4,16 @@ import { assignCompetitionRanking } from '../utils/ranking';
 import type { ScoreLike } from '../utils/ranking';
 import {
   ArcherProfileResponse,
+  CanonicalArcherProfileResponse,
   EventLeaderboardResponse,
+  ScoreSummary,
   LeaderboardEntry,
   TournamentLeaderboardResponse
 } from './types';
 
 interface AggregatedRow extends ScoreLike {
-  archerId: number;
+  primaryArcherId: number;
+  canonicalArcherId: number | null;
   firstName: string;
   lastName: string;
   conditionCode: string | null;
@@ -40,7 +43,11 @@ export class LeaderboardService {
           include: {
             scores: {
               include: {
-                archer: true,
+                archer: {
+                  include: {
+                    canonicalArcher: true
+                  }
+                },
                 category: true
               },
               orderBy: [
@@ -63,14 +70,22 @@ export class LeaderboardService {
 
     for (const event of tournament.events) {
       for (const score of event.scores) {
-        let existing = aggregateMap.get(score.archerId);
+        const groupingKey = score.archer.canonicalArcherId ?? score.archerId;
+        let existing = aggregateMap.get(groupingKey);
+
         if (!existing) {
+          const canonical = score.archer.canonicalArcher;
+          const displayFirstName = canonical?.primaryFirstName ?? score.archer.firstName;
+          const displayLastName = canonical?.primaryLastName ?? score.archer.lastName;
+          const displayTeam = canonical?.primaryTeam ?? score.archer.team ?? null;
+
           existing = {
-            archerId: score.archerId,
-            firstName: score.archer.firstName,
-            lastName: score.archer.lastName,
+            primaryArcherId: score.archerId,
+            canonicalArcherId: score.archer.canonicalArcherId ?? null,
+            firstName: displayFirstName,
+            lastName: displayLastName,
             conditionCode: score.archer.conditionCode ?? null,
-            team: score.archer.team ?? null,
+            team: displayTeam,
             total: 0,
             tens: 0,
             xCount: 0,
@@ -79,7 +94,7 @@ export class LeaderboardService {
             latestCategory: null,
             breakdown: []
           } satisfies AggregatedRow;
-          aggregateMap.set(score.archerId, existing);
+          aggregateMap.set(groupingKey, existing);
         }
 
         existing.total += score.total;
@@ -121,15 +136,14 @@ export class LeaderboardService {
 
     const leaderboard: LeaderboardEntry[] = ranked.map(({ item, rank }) => {
       const eventsShot = item.breakdown.length;
-      const best =
-        eventsShot > 0 ? Math.max(...item.breakdown.map(({ total }) => total)) : 0;
-      const worst =
-        eventsShot > 0 ? Math.min(...item.breakdown.map(({ total }) => total)) : 0;
+      const best = eventsShot > 0 ? Math.max(...item.breakdown.map(({ total }) => total)) : 0;
+      const worst = eventsShot > 0 ? Math.min(...item.breakdown.map(({ total }) => total)) : 0;
       const average = eventsShot > 0 ? item.total / eventsShot : 0;
       const latest = item.breakdown.at(-1) ?? null;
 
       return {
-        archerId: item.archerId,
+        archerId: item.primaryArcherId,
+        canonicalArcherId: item.canonicalArcherId,
         fullName: `${item.firstName} ${item.lastName}`.trim(),
         conditionCode: item.conditionCode,
         team: item.team,
@@ -149,7 +163,7 @@ export class LeaderboardService {
         latestCategory: latest?.categoryName ?? item.latestCategory,
         breakdown: item.breakdown,
         rank
-      };
+      } satisfies LeaderboardEntry;
     });
 
     return {
@@ -160,14 +174,12 @@ export class LeaderboardService {
         startDate: tournament.startDate ?? null,
         endDate: tournament.endDate ?? null,
         lastSyncedAt: tournament.lastSyncedAt ?? null,
-        events: tournament.events.map(
-          (eventRecord: (typeof tournament.events)[number]) => ({
-            id: eventRecord.id,
-            name: eventRecord.name,
-            displayOrder: eventRecord.displayOrder ?? null,
-            lastSyncedAt: eventRecord.lastSyncedAt ?? null
-          })
-        )
+        events: tournament.events.map((eventRecord) => ({
+          id: eventRecord.id,
+          name: eventRecord.name,
+          displayOrder: eventRecord.displayOrder ?? null,
+          lastSyncedAt: eventRecord.lastSyncedAt ?? null
+        }))
       },
       leaderboard
     };
@@ -181,7 +193,11 @@ export class LeaderboardService {
         categories: true,
         scores: {
           include: {
-            archer: true,
+            archer: {
+              include: {
+                canonicalArcher: true
+              }
+            },
             category: true
           },
           orderBy: [
@@ -198,17 +214,20 @@ export class LeaderboardService {
       throw new Error(`event ${eventId} was not found`);
     }
 
-    const categories = event.categories.map(
-      (categoryRecord: (typeof event.categories)[number]) => ({
-        categoryId: categoryRecord.id,
-        categoryName: categoryRecord.name,
-        scores: event.scores
-          .filter(
-            (scoreRecord: (typeof event.scores)[number]) => scoreRecord.categoryId === categoryRecord.id
-          )
-          .map((scoreRecord: (typeof event.scores)[number]) => ({
+    const categories = event.categories.map((categoryRecord) => ({
+      categoryId: categoryRecord.id,
+      categoryName: categoryRecord.name,
+      scores: event.scores
+        .filter((scoreRecord) => scoreRecord.categoryId === categoryRecord.id)
+        .map((scoreRecord) => {
+          const canonical = scoreRecord.archer.canonicalArcher;
+          const displayFirstName = canonical?.primaryFirstName ?? scoreRecord.archer.firstName;
+          const displayLastName = canonical?.primaryLastName ?? scoreRecord.archer.lastName;
+
+          return {
             archerId: scoreRecord.archerId,
-            fullName: `${scoreRecord.archer.firstName} ${scoreRecord.archer.lastName}`.trim(),
+            canonicalArcherId: scoreRecord.archer.canonicalArcherId ?? null,
+            fullName: `${displayFirstName} ${displayLastName}`.trim(),
             total: scoreRecord.total,
             tens: scoreRecord.tens,
             xCount: scoreRecord.xCount,
@@ -217,9 +236,9 @@ export class LeaderboardService {
             ranking: scoreRecord.ranking ?? null,
             tieBreak: coerceTieBreak(scoreRecord.tieBreak),
             rawScore: scoreRecord.rawScore
-          }))
-      })
-    );
+          };
+        })
+    }));
 
     return {
       event: {
@@ -257,22 +276,12 @@ export class LeaderboardService {
       throw new Error(`archer ${archerId} was not found`);
     }
 
-    const filteredScores = archer.scores.filter(
-      (scoreRecord: (typeof archer.scores)[number]) =>
-        tournamentId ? scoreRecord.event.tournamentId === tournamentId : true
+    const filteredScores = archer.scores.filter((scoreRecord) =>
+      tournamentId ? scoreRecord.event.tournamentId === tournamentId : true
     );
 
     const totals = filteredScores.reduce(
-      (
-        accumulator: {
-          total: number;
-          tens: number;
-          xCount: number;
-          nines: number;
-          arrows: number;
-        },
-        scoreRecord: (typeof filteredScores)[number]
-      ) => {
+      (accumulator, scoreRecord) => {
         accumulator.total += scoreRecord.total;
         accumulator.tens += scoreRecord.tens;
         accumulator.xCount += scoreRecord.xCount;
@@ -283,12 +292,16 @@ export class LeaderboardService {
       { total: 0, tens: 0, xCount: 0, nines: 0, arrows: 0 }
     );
 
-    const events = filteredScores.map((scoreRecord: (typeof filteredScores)[number]) => ({
+    const events = filteredScores.map((scoreRecord) => ({
       eventId: scoreRecord.eventId,
       eventName: scoreRecord.event.name,
       tournamentId: scoreRecord.event.tournamentId,
       tournamentName: scoreRecord.event.tournament?.name ?? '',
+      canonicalArcherId: archer.canonicalArcherId ?? null,
       total: scoreRecord.total,
+      tens: scoreRecord.tens,
+      xCount: scoreRecord.xCount,
+      nines: scoreRecord.nines,
       ranking: scoreRecord.ranking ?? null,
       categoryName: scoreRecord.category?.name ?? null,
       tieBreak: coerceTieBreak(scoreRecord.tieBreak),
@@ -302,6 +315,7 @@ export class LeaderboardService {
     return {
       archer: {
         id: archer.id,
+        canonicalArcherId: archer.canonicalArcherId ?? null,
         firstName: archer.firstName,
         lastName: archer.lastName,
         conditionCode: archer.conditionCode ?? null,
@@ -315,6 +329,166 @@ export class LeaderboardService {
       },
       events
     };
+  }
+
+  async getCanonicalArcherProfile(
+    canonicalArcherId: number
+  ): Promise<CanonicalArcherProfileResponse> {
+    const canonical = await this.prisma.canonicalArcher.findUnique({
+      where: { id: canonicalArcherId },
+      include: {
+        archers: {
+          include: {
+            scores: {
+              include: {
+                event: {
+                  include: { tournament: true }
+                },
+                category: true
+              },
+              orderBy: [
+                { event: { displayOrder: 'asc' as const } },
+                { eventId: 'asc' as const }
+              ]
+            }
+          }
+        }
+      }
+    });
+
+    if (!canonical) {
+      throw new Error(`canonical archer ${canonicalArcherId} was not found`);
+    }
+
+    const linkedArchers = canonical.archers.map((archerRecord) => ({
+      id: archerRecord.id,
+      firstName: archerRecord.firstName,
+      lastName: archerRecord.lastName,
+      team: archerRecord.team ?? null
+    }));
+
+    const allScores = canonical.archers.flatMap((archerRecord) => archerRecord.scores);
+
+    const totals = allScores.reduce(
+      (
+        accumulator: ScoreSummary & {
+          eventsShot: number;
+          tournamentsShot: number;
+          average: number;
+          best: number;
+          worst: number;
+        },
+        scoreRecord
+      ) => {
+        accumulator.total += scoreRecord.total;
+        accumulator.tens += scoreRecord.tens;
+        accumulator.xCount += scoreRecord.xCount;
+        accumulator.nines += scoreRecord.nines;
+        accumulator.arrows += scoreRecord.arrows;
+        return accumulator;
+      },
+      {
+        total: 0,
+        tens: 0,
+        xCount: 0,
+        nines: 0,
+        arrows: 0,
+        eventsShot: 0,
+        tournamentsShot: 0,
+        average: 0,
+        best: 0,
+        worst: 0
+      }
+    );
+
+    const tournamentsMap = new Map<
+      number,
+      {
+        tournamentId: number;
+        tournamentName: string;
+        totals: ScoreSummary;
+        eventsShot: number;
+        scores: Array<typeof allScores[number]>;
+      }
+    >();
+
+    for (const score of allScores) {
+      totals.eventsShot += 1;
+      const tournamentId = score.event.tournamentId;
+      if (!tournamentId) {
+        continue;
+      }
+
+      let entry = tournamentsMap.get(tournamentId);
+      if (!entry) {
+        entry = {
+          tournamentId,
+          tournamentName: score.event.tournament?.name ?? '',
+          totals: { total: 0, tens: 0, xCount: 0, nines: 0, arrows: 0 },
+          eventsShot: 0,
+          scores: []
+        };
+        tournamentsMap.set(tournamentId, entry);
+      }
+
+      entry.totals.total += score.total;
+      entry.totals.tens += score.tens;
+      entry.totals.xCount += score.xCount;
+      entry.totals.nines += score.nines;
+      entry.totals.arrows += score.arrows;
+      entry.eventsShot += 1;
+      entry.scores.push(score);
+    }
+
+    totals.tournamentsShot = tournamentsMap.size;
+    const allTotals = allScores.map((score) => score.total);
+    totals.best = allTotals.length > 0 ? Math.max(...allTotals) : 0;
+    totals.worst = allTotals.length > 0 ? Math.min(...allTotals) : 0;
+    totals.average = totals.eventsShot > 0 ? totals.total / totals.eventsShot : 0;
+
+    const tournaments = Array.from(tournamentsMap.values())
+      .map(({ tournamentId, tournamentName, totals: tournamentTotals, eventsShot, scores }) => {
+        const totalsArray = scores.map((score) => score.total);
+        const best = totalsArray.length > 0 ? Math.max(...totalsArray) : 0;
+        const worst = totalsArray.length > 0 ? Math.min(...totalsArray) : 0;
+        const average = totalsArray.length > 0 ? tournamentTotals.total / totalsArray.length : 0;
+        const sortedScores = [...scores].sort((a, b) => {
+          const aDate = a.event.lastSyncedAt ?? new Date(0);
+          const bDate = b.event.lastSyncedAt ?? new Date(0);
+          return bDate.getTime() - aDate.getTime();
+        });
+        const latest = sortedScores[0] ?? null;
+
+        return {
+          tournamentId,
+          tournamentName,
+          eventsShot,
+          totals: tournamentTotals,
+          average,
+          best,
+          worst,
+          latestRanking: latest?.ranking ?? null,
+          lastEventDate: latest?.event.lastSyncedAt ?? null
+        } satisfies CanonicalArcherProfileResponse['tournaments'][number];
+      })
+      .sort((a, b) => {
+        const aTime = a.lastEventDate ? a.lastEventDate.getTime() : 0;
+        const bTime = b.lastEventDate ? b.lastEventDate.getTime() : 0;
+        return bTime - aTime;
+      });
+
+    return {
+      canonicalArcher: {
+        id: canonical.id,
+        primaryFirstName: canonical.primaryFirstName,
+        primaryLastName: canonical.primaryLastName,
+        primaryTeam: canonical.primaryTeam,
+        normalizedKey: canonical.normalizedKey
+      },
+      linkedArchers,
+      totals,
+      tournaments
+    } satisfies CanonicalArcherProfileResponse;
   }
 }
 
