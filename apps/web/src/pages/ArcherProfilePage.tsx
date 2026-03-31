@@ -180,7 +180,7 @@ export default function ArcherProfilePage(): JSX.Element {
         below for reference and marked explicitly.
       </p>
       <div className="table-container">
-        <table>
+        <table className="responsive-table responsive-table--archer-history">
           <thead>
             <tr>
               <th>Tournament / Event</th>
@@ -197,7 +197,7 @@ export default function ArcherProfilePage(): JSX.Element {
             {tournamentSummaries.map((tournament) => (
               <Fragment key={`group-${tournament.tournamentId}`}>
                 <tr className="tournament-row">
-                  <td>
+                  <td data-label="Tournament / Event">
                     <strong>
                       <Link
                         to={
@@ -211,20 +211,20 @@ export default function ArcherProfilePage(): JSX.Element {
                       </Link>
                     </strong>
                   </td>
-                  <td>—</td>
-                  <td>—</td>
-                  <td>—</td>
-                  <td><strong>{tournament.totalScore}</strong></td>
-                  <td><strong>{tournament.average.toFixed(1)}</strong></td>
-                  <td><strong>{tournament.totalXs}</strong></td>
-                  <td><strong>{tournament.totalTens}</strong></td>
+                  <td data-label="Status">—</td>
+                  <td data-label="Category">—</td>
+                  <td data-label="Place">—</td>
+                  <td data-label="Total"><strong>{tournament.totalScore}</strong></td>
+                  <td data-label="Average"><strong>{tournament.average.toFixed(1)}</strong></td>
+                  <td data-label="Xs"><strong>{tournament.totalXs}</strong></td>
+                  <td data-label="10s"><strong>{tournament.totalTens}</strong></td>
                 </tr>
                 {tournament.events.map((event) => (
                   <tr
                     key={`event-${event.eventId}-${event.categoryName ?? 'uncat'}`}
                     className={`event-row ${event.countedInTournamentTotal ? '' : 'event-row-dropped'}`}
                   >
-                    <td>
+                    <td data-label="Tournament / Event">
                       <div style={{ paddingLeft: '2rem' }}>
                         <Link
                           to={
@@ -240,17 +240,17 @@ export default function ArcherProfilePage(): JSX.Element {
                         </Link>
                       </div>
                     </td>
-                    <td>
+                    <td data-label="Status">
                       <span className={`badge ${event.countedInTournamentTotal ? '' : 'badge-muted'}`}>
                         {event.countedInTournamentTotal ? 'Counted' : 'Dropped'}
                       </span>
                     </td>
-                    <td>{event.categoryName ?? '—'}</td>
-                    <td>{event.ranking ?? '—'}</td>
-                    <td>{event.total}</td>
-                    <td>{event.averagePerArrow.toFixed(2)}</td>
-                    <td>{event.xCount}</td>
-                    <td>{event.tens}</td>
+                    <td data-label="Category">{event.categoryName ?? '—'}</td>
+                    <td data-label="Place">{event.ranking ?? '—'}</td>
+                    <td data-label="Total">{event.total}</td>
+                    <td data-label="Average">{event.averagePerArrow.toFixed(2)}</td>
+                    <td data-label="Xs">{event.xCount}</td>
+                    <td data-label="10s">{event.tens}</td>
                   </tr>
                 ))}
               </Fragment>

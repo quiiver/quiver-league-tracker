@@ -148,7 +148,7 @@ export default function CanonicalArcherProfilePage(): JSX.Element {
       <section>
         <h2>Category Breakdown</h2>
         <div className="table-container">
-          <table>
+          <table className="responsive-table responsive-table--category-breakdown">
             <thead>
               <tr>
                 <th>Category</th>
@@ -162,12 +162,12 @@ export default function CanonicalArcherProfilePage(): JSX.Element {
             <tbody>
               {categoryBreakdown.map((category) => (
                 <tr key={category.categoryName}>
-                  <td>{category.categoryName}</td>
-                  <td>{category.tournaments}</td>
-                  <td>{category.tournamentAverage.toFixed(1)}</td>
-                  <td>{category.averagePerArrow.toFixed(2)}</td>
-                  <td>{category.xCount}</td>
-                  <td>{category.tens}</td>
+                  <td data-label="Category">{category.categoryName}</td>
+                  <td data-label="Tournaments">{category.tournaments}</td>
+                  <td data-label="Tournament Average">{category.tournamentAverage.toFixed(1)}</td>
+                  <td data-label="Avg/Arrow">{category.averagePerArrow.toFixed(2)}</td>
+                  <td data-label="Xs">{category.xCount}</td>
+                  <td data-label="10s">{category.tens}</td>
                 </tr>
               ))}
             </tbody>
@@ -184,7 +184,7 @@ export default function CanonicalArcherProfilePage(): JSX.Element {
           <p className="text-muted">No event results available yet.</p>
         ) : (
           <div className="table-container">
-            <table>
+            <table className="responsive-table responsive-table--canonical-history">
               <thead>
                 <tr>
                   <th>Tournament / Category</th>
@@ -199,24 +199,24 @@ export default function CanonicalArcherProfilePage(): JSX.Element {
                 {data.tournaments.map((tournament) => (
                   <Fragment key={`tournament-${tournament.tournamentId}`}>
                     <tr className="tournament-row">
-                      <td>
+                      <td data-label="Tournament / Category">
                         <strong>
                           <Link to={`/tournaments/${tournament.tournamentId}`} className="table-link">
                             {tournament.tournamentName}
                           </Link>
                         </strong>
                       </td>
-                      <td>—</td>
-                      <td>
+                      <td data-label="Final Event Rank">—</td>
+                      <td data-label="Total">
                         <strong>{tournament.totals.total}</strong>
                       </td>
-                      <td>
+                      <td data-label="Average">
                         <strong>{tournament.average.toFixed(1)}</strong>
                       </td>
-                      <td>
+                      <td data-label="Xs">
                         <strong>{tournament.totals.xCount}</strong>
                       </td>
-                      <td>
+                      <td data-label="10s">
                         <strong>{tournament.totals.tens}</strong>
                       </td>
                     </tr>
@@ -225,7 +225,7 @@ export default function CanonicalArcherProfilePage(): JSX.Element {
                         key={`category-${tournament.tournamentId}-${category.categoryName}-${category.sourceArcherId ?? 'unknown'}`}
                         className="event-row"
                       >
-                        <td style={{ paddingLeft: '2rem' }}>
+                        <td data-label="Tournament / Category" style={{ paddingLeft: '2rem' }}>
                           {category.sourceArcherId ? (
                             <Link to={`/archers/${category.sourceArcherId}`} className="table-link">
                               {category.categoryName}
@@ -234,11 +234,11 @@ export default function CanonicalArcherProfilePage(): JSX.Element {
                             category.categoryName
                           )}
                         </td>
-                        <td>{category.latestRanking ?? '—'}</td>
-                        <td>{category.totals.total}</td>
-                        <td>{category.average.toFixed(1)}</td>
-                        <td>{category.totals.xCount}</td>
-                        <td>{category.totals.tens}</td>
+                        <td data-label="Final Event Rank">{category.latestRanking ?? '—'}</td>
+                        <td data-label="Total">{category.totals.total}</td>
+                        <td data-label="Average">{category.average.toFixed(1)}</td>
+                        <td data-label="Xs">{category.totals.xCount}</td>
+                        <td data-label="10s">{category.totals.tens}</td>
                       </tr>
                     ))}
                   </Fragment>

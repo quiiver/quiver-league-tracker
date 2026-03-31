@@ -35,7 +35,7 @@ export default function EventLeaderboardPage(): JSX.Element {
           <div key={category.categoryId} className="card" style={{ marginBottom: '1.5rem' }}>
             <h3>{category.categoryName}</h3>
             <div className="table-container">
-              <table>
+              <table className="responsive-table responsive-table--event">
                 <thead>
                   <tr>
                     <th>Rank</th>
@@ -49,8 +49,8 @@ export default function EventLeaderboardPage(): JSX.Element {
                 <tbody>
                   {category.scores.map((score) => (
                     <tr key={score.archerId}>
-                      <td>{score.ranking ?? '–'}</td>
-                      <td>
+                      <td data-label="Rank">{score.ranking ?? '–'}</td>
+                      <td data-label="Archer">
                         <Link
                           to={`/tournaments/${data.event.tournamentId}/categories/${toCategorySlug(
                             category.categoryName
@@ -59,10 +59,10 @@ export default function EventLeaderboardPage(): JSX.Element {
                           {score.fullName}
                         </Link>
                       </td>
-                      <td>{score.total}</td>
-                      <td>{score.tens}</td>
-                      <td>{score.xCount}</td>
-                      <td>{score.rawScore}</td>
+                      <td data-label="Total">{score.total}</td>
+                      <td data-label="10s">{score.tens}</td>
+                      <td data-label="Xs">{score.xCount}</td>
+                      <td data-label="Score">{score.rawScore}</td>
                     </tr>
                   ))}
                 </tbody>

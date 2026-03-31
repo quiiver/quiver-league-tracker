@@ -62,7 +62,7 @@ export default function EventCategoryDetailPage(): JSX.Element {
           {data.event.arrowsPerEnd ?? '—'} arrows per end
         </p>
         <div className="table-container">
-          <table>
+          <table className="responsive-table responsive-table--event">
             <thead>
               <tr>
                 <th>Rank</th>
@@ -87,18 +87,18 @@ export default function EventCategoryDetailPage(): JSX.Element {
                 return (
                   <Fragment key={score.archerId}>
                     <tr>
-                      <td>{score.ranking ?? '–'}</td>
-                      <td>
+                      <td data-label="Rank">{score.ranking ?? '–'}</td>
+                      <td data-label="Archer">
                         <Link
                           to={`/tournaments/${tournamentId}/categories/${categorySlug}/archers/${score.archerId}`}
                         >
                           {score.fullName}
                         </Link>
                       </td>
-                      <td>{score.total}</td>
-                      <td>{score.tens}</td>
-                      <td>{score.xCount}</td>
-                      <td>{score.rawScore}</td>
+                      <td data-label="Total">{score.total}</td>
+                      <td data-label="10s">{score.tens}</td>
+                      <td data-label="Xs">{score.xCount}</td>
+                      <td data-label="Score">{score.rawScore}</td>
                     </tr>
                     {breakdown ? (
                       <tr className="event-breakdown-row">

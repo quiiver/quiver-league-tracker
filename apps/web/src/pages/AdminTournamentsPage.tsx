@@ -152,7 +152,7 @@ export default function AdminTournamentsPage(): JSX.Element {
           <p className="text-muted">No tournaments have been synced yet.</p>
         ) : (
           <div className="table-container">
-            <table>
+            <table className="responsive-table responsive-table--admin-tournaments">
               <thead>
                 <tr>
                   <th>Tournament</th>
@@ -165,13 +165,13 @@ export default function AdminTournamentsPage(): JSX.Element {
               <tbody>
                 {sortedTournaments.map((tournament) => (
                   <tr key={tournament.id}>
-                    <td>
+                    <td data-label="Tournament">
                       <strong>#{tournament.id}</strong> {tournament.name}
                     </td>
-                    <td>{tournament.location ?? '—'}</td>
-                    <td>{formatDateRange(tournament.startDate, tournament.endDate)}</td>
-                    <td>{formatRelative(tournament.lastSyncedAt)}</td>
-                    <td>
+                    <td data-label="Location">{tournament.location ?? '—'}</td>
+                    <td data-label="Dates">{formatDateRange(tournament.startDate, tournament.endDate)}</td>
+                    <td data-label="Last Sync">{formatRelative(tournament.lastSyncedAt)}</td>
+                    <td data-label="Actions">
                       <div className="admin-action-row">
                         <Link className="badge" to={`/tournaments/${tournament.id}`}>
                           View

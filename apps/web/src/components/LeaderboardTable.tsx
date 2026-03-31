@@ -12,7 +12,7 @@ export default function LeaderboardTable({
 }: LeaderboardTableProps): JSX.Element {
   return (
     <div className="table-container">
-      <table>
+      <table className="responsive-table responsive-table--leaderboard">
         <thead>
           <tr>
             <th>Rank</th>
@@ -28,18 +28,18 @@ export default function LeaderboardTable({
         <tbody>
           {data.map((entry) => (
             <tr key={entry.archerId}>
-              <td>{entry.rank}</td>
-              <td>
+              <td data-label="Rank">{entry.rank}</td>
+              <td data-label="Archer">
                 <Link to={getArcherLink ? getArcherLink(entry) : getDefaultArcherLink(entry)}>
                   {entry.fullName}
                 </Link>
               </td>
-              <td>{entry.totals.total}</td>
-              <td>{entry.totals.tens}</td>
-              <td>{entry.totals.xCount}</td>
-              <td>{formatAveragePerArrow(entry.totals.total, entry.totals.arrows)}</td>
-              <td>{entry.eventsShot}</td>
-              <td>{renderTrend(entry.trend)}</td>
+              <td data-label="Total">{entry.totals.total}</td>
+              <td data-label="10s">{entry.totals.tens}</td>
+              <td data-label="Xs">{entry.totals.xCount}</td>
+              <td data-label="Avg/Arrow">{formatAveragePerArrow(entry.totals.total, entry.totals.arrows)}</td>
+              <td data-label="Events">{entry.eventsShot}</td>
+              <td data-label="Trend">{renderTrend(entry.trend)}</td>
             </tr>
           ))}
         </tbody>
