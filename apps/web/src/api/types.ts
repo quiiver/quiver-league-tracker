@@ -7,6 +7,34 @@ export interface TournamentSummary {
   lastSyncedAt: string | null;
 }
 
+export interface TournamentSyncResponse {
+  tournamentId: number;
+  eventIds: number[];
+  syncedAt: string;
+}
+
+export interface SyncAllTournamentsResponse {
+  tournamentIds: number[];
+  syncedTournamentCount: number;
+  syncedEventCount: number;
+  syncedAt: string;
+}
+
+export interface TournamentDeleteResponse {
+  tournamentId: number;
+  existed: boolean;
+  deletedEvents: number;
+  deletedCategories: number;
+  deletedParticipants: number;
+  deletedScores: number;
+  deletedTournament: number;
+}
+
+export interface AdminSessionResponse {
+  authenticated: boolean;
+  configured: boolean;
+}
+
 export interface TournamentEventSummary {
   id: number;
   name: string;
@@ -94,6 +122,9 @@ export interface EventLeaderboardResponse {
     displayOrder: number | null;
     tournamentId: number;
     tournamentName: string | null;
+    roundsCount: number | null;
+    endsPerRound: number | null;
+    arrowsPerEnd: number | null;
     lastSyncedAt: string | null;
   };
   categories: EventCategoryLeaderboard[];
@@ -123,6 +154,10 @@ export interface ArcherProfileResponse {
     eventName: string;
     tournamentId: number;
     tournamentName: string;
+    tournamentStartDate: string | null;
+    roundsCount: number | null;
+    endsPerRound: number | null;
+    arrowsPerEnd: number | null;
     canonicalArcherId: number | null;
     total: number;
     tens: number;
@@ -144,11 +179,21 @@ export interface CanonicalArcherProfileResponse {
     primaryTeam: string | null;
     normalizedKey: string;
   };
+  combinedProfile: {
+    aggregationRule: string;
+    categoriesRepresented: string[];
+    teamsRepresented: string[];
+    linkedRecords: number;
+    tournamentsRepresented: number;
+  };
   linkedArchers: Array<{
     id: number;
     firstName: string;
     lastName: string;
     team: string | null;
+    conditionCode: string | null;
+    canonicalLinkMethod: string | null;
+    eventsShot: number;
   }>;
   totals: {
     total: number;
@@ -178,5 +223,63 @@ export interface CanonicalArcherProfileResponse {
     worst: number;
     latestRanking: number | null;
     lastEventDate: string | null;
+    categories: Array<{
+      categoryName: string;
+      sourceArcherId: number | null;
+      latestRanking: number | null;
+      totals: {
+        total: number;
+        tens: number;
+        xCount: number;
+        arrows: number;
+      };
+      average: number;
+      includedEvents: number;
+    }>;
   }>;
+}
+
+export interface CanonicalInspectionResponse {
+  canonicalArcher: {
+    id: number;
+    normalizedKey: string;
+    primaryFirstName: string | null;
+    primaryLastName: string | null;
+    primaryTeam: string | null;
+    linkedArchers: number;
+    totalScores: number;
+    tournamentsShot: number;
+  };
+  archers: Array<{
+    id: number;
+    canonicalLinkMethod: string | null;
+    canonicalLinkUpdatedAt: string | null;
+    firstName: string;
+    lastName: string;
+    team: string | null;
+    conditionCode: string | null;
+    eventsShot: number;
+  }>;
+}
+
+export interface CanonicalLinkResponse {
+  archerId: number;
+  previousCanonicalArcherId: number | null;
+  canonicalArcherId: number;
+  linkMethod: string;
+}
+
+export interface CanonicalUnlinkResponse {
+  archerId: number;
+  previousCanonicalArcherId: number | null;
+  detached: boolean;
+}
+
+export interface SuspiciousCanonicalProfileResponse {
+  canonicalArcherId: number;
+  normalizedKey: string;
+  displayName: string;
+  linkedArchers: number;
+  teams: string[];
+  reasons: string[];
 }

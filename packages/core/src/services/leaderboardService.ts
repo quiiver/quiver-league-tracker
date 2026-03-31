@@ -247,6 +247,9 @@ export class LeaderboardService {
         displayOrder: event.displayOrder ?? null,
         tournamentId: event.tournamentId,
         tournamentName: event.tournament?.name ?? null,
+        roundsCount: event.roundsCount ?? null,
+        endsPerRound: event.endsPerRound ?? null,
+        arrowsPerEnd: event.arrowsPerEnd ?? null,
         lastSyncedAt: event.lastSyncedAt ?? null
       },
       categories
@@ -297,6 +300,10 @@ export class LeaderboardService {
       eventName: scoreRecord.event.name,
       tournamentId: scoreRecord.event.tournamentId,
       tournamentName: scoreRecord.event.tournament?.name ?? '',
+      tournamentStartDate: scoreRecord.event.tournament?.startDate ?? null,
+      roundsCount: scoreRecord.event.roundsCount ?? null,
+      endsPerRound: scoreRecord.event.endsPerRound ?? null,
+      arrowsPerEnd: scoreRecord.event.arrowsPerEnd ?? null,
       canonicalArcherId: archer.canonicalArcherId ?? null,
       total: scoreRecord.total,
       tens: scoreRecord.tens,
@@ -364,10 +371,19 @@ export class LeaderboardService {
       id: archerRecord.id,
       firstName: archerRecord.firstName,
       lastName: archerRecord.lastName,
-      team: archerRecord.team ?? null
+      team: archerRecord.team ?? null,
+      conditionCode: archerRecord.conditionCode ?? null,
+      canonicalLinkMethod: archerRecord.canonicalLinkMethod ?? null,
+      eventsShot: archerRecord.scores.length
     }));
 
     const allScores = canonical.archers.flatMap((archerRecord) => archerRecord.scores);
+    const categoriesRepresented = Array.from(
+      new Set(allScores.map((score) => score.category?.name).filter((name): name is string => Boolean(name)))
+    ).sort();
+    const teamsRepresented = Array.from(
+      new Set(canonical.archers.map((archer) => archer.team).filter((team): team is string => Boolean(team)))
+    ).sort();
 
     const totals = allScores.reduce(
       (
@@ -447,28 +463,95 @@ export class LeaderboardService {
     totals.average = totals.eventsShot > 0 ? totals.total / totals.eventsShot : 0;
 
     const tournaments = Array.from(tournamentsMap.values())
-      .map(({ tournamentId, tournamentName, totals: tournamentTotals, eventsShot, scores }) => {
-        const totalsArray = scores.map((score) => score.total);
-        const best = totalsArray.length > 0 ? Math.max(...totalsArray) : 0;
-        const worst = totalsArray.length > 0 ? Math.min(...totalsArray) : 0;
-        const average = totalsArray.length > 0 ? tournamentTotals.total / totalsArray.length : 0;
-        const sortedScores = [...scores].sort((a, b) => {
-          const aDate = a.event.lastSyncedAt ?? new Date(0);
-          const bDate = b.event.lastSyncedAt ?? new Date(0);
-          return bDate.getTime() - aDate.getTime();
-        });
+      .map(({ tournamentId, tournamentName, scores }) => {
+        const sortedScores = [...scores].sort(compareScoresByTournamentEventOrderDesc);
         const latest = sortedScores[0] ?? null;
+        const categoryMap = new Map<
+          string,
+          {
+            categoryName: string;
+            sourceArcherId: number | null;
+            latestRanking: number | null;
+            totals: Pick<ScoreSummary, 'total' | 'tens' | 'xCount' | 'arrows'>;
+            average: number;
+            includedEvents: number;
+          }
+        >();
+
+        const scoresByCategory = new Map<string, typeof scores>();
+        for (const score of scores) {
+          const categoryName = score.category?.name ?? 'Uncategorized';
+          const existingCategoryScores = scoresByCategory.get(categoryName);
+          if (existingCategoryScores) {
+            existingCategoryScores.push(score);
+          } else {
+            scoresByCategory.set(categoryName, [score]);
+          }
+        }
+
+        for (const [categoryName, categoryScores] of scoresByCategory.entries()) {
+          const bestFour = [...categoryScores].sort((a, b) => b.total - a.total).slice(0, 4);
+          const sourceArcherId = bestFour.find((score) => score.archerId)?.archerId ?? null;
+          const latestScore = [...categoryScores].sort(compareScoresByTournamentEventOrderDesc)[0] ?? null;
+          const totals = bestFour.reduce(
+            (accumulator, score) => {
+              accumulator.total += score.total;
+              accumulator.tens += score.tens;
+              accumulator.xCount += score.xCount;
+              accumulator.arrows += score.arrows;
+              return accumulator;
+            },
+            { total: 0, tens: 0, xCount: 0, arrows: 0 }
+          );
+
+          categoryMap.set(categoryName, {
+            categoryName,
+            sourceArcherId,
+            latestRanking: latestScore?.ranking ?? null,
+            totals,
+            average: bestFour.length > 0 ? totals.total / bestFour.length : 0,
+            includedEvents: bestFour.length
+          });
+        }
+
+        const categoryRows = Array.from(categoryMap.values()).sort((a, b) =>
+          a.categoryName.localeCompare(b.categoryName)
+        );
+        const normalizedTournamentTotals = categoryRows.reduce<ScoreSummary>(
+          (accumulator, category) => {
+            accumulator.total += category.totals.total;
+            accumulator.tens += category.totals.tens;
+            accumulator.xCount += category.totals.xCount;
+            accumulator.arrows += category.totals.arrows;
+            return accumulator;
+          },
+          { total: 0, tens: 0, xCount: 0, nines: 0, arrows: 0 }
+        );
+        const normalizedEventsShot = categoryRows.reduce(
+          (accumulator, category) => accumulator + category.includedEvents,
+          0
+        );
+        const includedTotals = scoresByCategory.size
+          ? Array.from(scoresByCategory.values()).flatMap((categoryScores) =>
+              [...categoryScores].sort((a, b) => b.total - a.total).slice(0, 4).map((score) => score.total)
+            )
+          : [];
+        const best = includedTotals.length > 0 ? Math.max(...includedTotals) : 0;
+        const worst = includedTotals.length > 0 ? Math.min(...includedTotals) : 0;
+        const average =
+          normalizedEventsShot > 0 ? normalizedTournamentTotals.total / normalizedEventsShot : 0;
 
         return {
           tournamentId,
           tournamentName,
-          eventsShot,
-          totals: tournamentTotals,
+          eventsShot: normalizedEventsShot,
+          totals: normalizedTournamentTotals,
           average,
           best,
           worst,
           latestRanking: latest?.ranking ?? null,
-          lastEventDate: latest?.event.lastSyncedAt ?? null
+          lastEventDate: latest?.event.lastSyncedAt ?? null,
+          categories: categoryRows
         } satisfies CanonicalArcherProfileResponse['tournaments'][number];
       })
       .sort((a, b) => {
@@ -484,6 +567,13 @@ export class LeaderboardService {
         primaryLastName: canonical.primaryLastName,
         primaryTeam: canonical.primaryTeam,
         normalizedKey: canonical.normalizedKey
+      },
+      combinedProfile: {
+        aggregationRule: 'best 4 results per category record within each tournament summary',
+        categoriesRepresented,
+        teamsRepresented,
+        linkedRecords: canonical.archers.length,
+        tournamentsRepresented: tournamentsMap.size
       },
       linkedArchers,
       totals,
@@ -525,4 +615,16 @@ function coerceTieBreak(value: string | null): Array<{ label: string; value: num
   } catch (error) {
     return null;
   }
+}
+
+function compareScoresByTournamentEventOrderDesc(
+  a: { event: { displayOrder: number | null; id: number } },
+  b: { event: { displayOrder: number | null; id: number } }
+): number {
+  const orderDelta = (b.event.displayOrder ?? b.event.id) - (a.event.displayOrder ?? a.event.id);
+  if (orderDelta !== 0) {
+    return orderDelta;
+  }
+
+  return b.event.id - a.event.id;
 }

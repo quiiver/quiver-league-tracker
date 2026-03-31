@@ -47,6 +47,13 @@ function selectKeptBreakdowns(breakdowns: EventBreakdown[], dropCount: number): 
   return breakdowns.filter((item) => !dropSet.has(item.eventId));
 }
 
+export function selectTopBreakdowns(
+  breakdowns: EventBreakdown[],
+  dropCount: number = DEFAULT_DROP_COUNT
+): EventBreakdown[] {
+  return selectKeptBreakdowns(breakdowns, dropCount);
+}
+
 function adjustEntryTotals(entry: LeaderboardEntry, dropCount: number): LeaderboardEntry {
   if (dropCount <= 0 || entry.breakdown.length <= dropCount) {
     return { ...entry, rank: 0 };

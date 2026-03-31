@@ -80,6 +80,9 @@ export interface EventLeaderboardResponse {
     displayOrder: number | null;
     tournamentId: number;
     tournamentName: string | null;
+    roundsCount: number | null;
+    endsPerRound: number | null;
+    arrowsPerEnd: number | null;
     lastSyncedAt: Date | null;
   };
   categories: EventCategoryLeaderboard[];
@@ -101,6 +104,10 @@ export interface ArcherProfileResponse {
     eventName: string;
     tournamentId: number;
     tournamentName: string;
+    tournamentStartDate: Date | null;
+    roundsCount: number | null;
+    endsPerRound: number | null;
+    arrowsPerEnd: number | null;
     canonicalArcherId: number | null;
     total: number;
     tens: number;
@@ -122,11 +129,21 @@ export interface CanonicalArcherProfileResponse {
     primaryTeam: string | null;
     normalizedKey: string;
   };
+  combinedProfile: {
+    aggregationRule: string;
+    categoriesRepresented: string[];
+    teamsRepresented: string[];
+    linkedRecords: number;
+    tournamentsRepresented: number;
+  };
   linkedArchers: Array<{
     id: number;
     firstName: string;
     lastName: string;
     team: string | null;
+    conditionCode: string | null;
+    canonicalLinkMethod: string | null;
+    eventsShot: number;
   }>;
   totals: ScoreSummary & {
     eventsShot: number;
@@ -145,5 +162,13 @@ export interface CanonicalArcherProfileResponse {
     worst: number;
     latestRanking: number | null;
     lastEventDate: Date | null;
+    categories: Array<{
+      categoryName: string;
+      sourceArcherId: number | null;
+      latestRanking: number | null;
+      totals: Pick<ScoreSummary, 'total' | 'tens' | 'xCount' | 'arrows'>;
+      average: number;
+      includedEvents: number;
+    }>;
   }>;
 }

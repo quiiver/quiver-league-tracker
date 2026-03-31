@@ -15,7 +15,7 @@ export default function TournamentCard({ tournament }: TournamentCardProps): JSX
         {formatDateRange(startDate, endDate)} · Last sync: {formatRelative(lastSyncedAt)}
       </p>
       <Link className="badge" to={`/tournaments/${id}`}>
-        View Leaderboard
+        Open Dashboard
       </Link>
     </div>
   );

@@ -1,12 +1,19 @@
 import { Fragment } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useArcherProfile } from '../hooks/useArcherProfile';
+import { toCategorySlug } from '../utils/tournamentCategories';
 import { calculateScoreDistribution } from '../utils/scoreDistribution';
 
 export default function ArcherProfilePage(): JSX.Element {
   const params = useParams();
   const archerId = params.archerId ? Number.parseInt(params.archerId, 10) : NaN;
-  const { data, isLoading, isError, error } = useArcherProfile(archerId, undefined, Number.isFinite(archerId));
+  const tournamentId = params.tournamentId ? Number.parseInt(params.tournamentId, 10) : undefined;
+  const categorySlug = params.categorySlug;
+  const { data, isLoading, isError, error } = useArcherProfile(
+    archerId,
+    Number.isFinite(tournamentId ?? NaN) ? tournamentId : undefined,
+    Number.isFinite(archerId)
+  );
 
   if (!Number.isFinite(archerId)) {
     return <p className="text-muted">Invalid archer id.</p>;
@@ -30,13 +37,10 @@ export default function ArcherProfilePage(): JSX.Element {
   const distinctCategories = Array.from(
     new Set(eventsWithMetrics.map((event) => event.categoryName).filter((name): name is string => Boolean(name)))
   );
-
-  const categoryHeading =
-    distinctCategories.length === 0
-      ? 'Uncategorized'
-      : distinctCategories.length === 1
-        ? distinctCategories[0]
-        : `${distinctCategories[0]} +${distinctCategories.length - 1} more`;
+  const categoryLabel = distinctCategories[0] ?? 'Uncategorized';
+  const isTournamentScoped = Number.isFinite(tournamentId ?? NaN);
+  const scopedTournamentName =
+    isTournamentScoped && eventsWithMetrics.length > 0 ? eventsWithMetrics[0].tournamentName : null;
 
   // Group events by tournament and category
   type EventMetric = (typeof eventsWithMetrics)[number];
@@ -47,6 +51,7 @@ export default function ArcherProfilePage(): JSX.Element {
       acc[key] = {
         tournamentId: event.tournamentId,
         tournamentName: event.tournamentName,
+        tournamentStartDate: event.tournamentStartDate,
         categories: new Map()
       };
     }
@@ -58,11 +63,19 @@ export default function ArcherProfilePage(): JSX.Element {
     (acc[key].categories.get(categoryKey) as EventMetric[]).push(event);
 
     return acc;
-  }, {} as Record<number, { tournamentId: number; tournamentName: string; categories: Map<string, EventMetric[]> }>);
+  }, {} as Record<
+    number,
+    {
+      tournamentId: number;
+      tournamentName: string;
+      tournamentStartDate: string | null;
+      categories: Map<string, EventMetric[]>;
+    }
+  >);
 
   // Calculate tournament aggregates (best 4 per category)
   const tournamentSummaries = Object.values(tournamentGroups).map((tournament) => {
-    const allEvents: typeof eventsWithMetrics = [];
+    const allEvents: Array<EventMetric & { countedInTournamentTotal: boolean }> = [];
     let totalScore = 0;
     let totalTens = 0;
     let totalXs = 0;
@@ -72,9 +85,15 @@ export default function ArcherProfilePage(): JSX.Element {
       // Sort by total descending and take best 4
       const sorted = [...categoryEvents].sort((a, b) => b.total - a.total);
       const best4 = sorted.slice(0, 4);
-      
-      allEvents.push(...categoryEvents);
-      
+      const keptEventIds = new Set(best4.map((event) => event.eventId));
+
+      allEvents.push(
+        ...categoryEvents.map((event) => ({
+          ...event,
+          countedInTournamentTotal: keptEventIds.has(event.eventId)
+        }))
+      );
+
       best4.forEach((event) => {
         totalScore += event.total;
         totalTens += event.tens;
@@ -92,23 +111,41 @@ export default function ArcherProfilePage(): JSX.Element {
       eventCount,
       average: eventCount > 0 ? totalScore / eventCount : 0
     };
-  });
+  }).sort((a, b) => compareTournamentStartDateDesc(a.tournamentStartDate, b.tournamentStartDate, a.tournamentId, b.tournamentId));
 
   const scoreDistribution = calculateScoreDistribution(eventsWithMetrics);
 
   return (
-    <section>
+    <section id="archer-profile">
       <h1>
-        {data.archer.firstName} {data.archer.lastName} - {categoryHeading}
+        {data.archer.firstName} {data.archer.lastName} • {categoryLabel}
       </h1>
-      {data.archer.canonicalArcherId && (
-        <p>
-          <Link to={`/profiles/${data.archer.canonicalArcherId}`}>View full career summary</Link>
+      {isTournamentScoped && scopedTournamentName ? (
+        <p className="h2" style={{ marginTop: '-0.35rem', marginBottom: '0.75rem' }}>
+          <Link to={`/tournaments/${tournamentId}`}>{scopedTournamentName}</Link>
         </p>
-      )}
+      ) : null}
 
-      <section>
-        <h2>Overall Statistics</h2>
+      <div className="section-nav">
+        {data.archer.canonicalArcherId ? (
+          <Link className="button" to={`/profiles/${data.archer.canonicalArcherId}`}>
+            Archer Profile
+          </Link>
+        ) : null}
+        {isTournamentScoped && tournamentId && categorySlug ? (
+          <Link className="button" to={`/tournaments/${tournamentId}/categories/${categorySlug}`}>
+            Category Results
+          </Link>
+        ) : null}
+        {isTournamentScoped && tournamentId ? (
+          <Link className="button" to={`/tournaments/${tournamentId}`}>
+            Tournament Results
+          </Link>
+        ) : null}
+      </div>
+
+      <section id="category-results">
+        <h2>Stats</h2>
         <div className="stats-grid">
           <div className="stat-box">
             <div className="stat-label">Total Score</div>
@@ -137,12 +174,17 @@ export default function ArcherProfilePage(): JSX.Element {
         </div>
       </section>
 
-      <h2>Tournament → Event Results</h2>
+      <h2 id="tournament-results">Tournament Results For This Category</h2>
+      <p className="text-muted">
+        Tournament summary rows use the best 4 event scores per category. Dropped scores are shown
+        below for reference and marked explicitly.
+      </p>
       <div className="table-container">
         <table>
           <thead>
             <tr>
               <th>Tournament / Event</th>
+              <th>Status</th>
               <th>Category</th>
               <th>Place</th>
               <th>Total</th>
@@ -157,11 +199,19 @@ export default function ArcherProfilePage(): JSX.Element {
                 <tr className="tournament-row">
                   <td>
                     <strong>
-                      <Link to={`/tournaments/${tournament.tournamentId}/overall`} className="table-link">
+                      <Link
+                        to={
+                          tournament.tournamentId === tournamentId && categorySlug
+                            ? `/tournaments/${tournament.tournamentId}/categories/${categorySlug}`
+                            : `/tournaments/${tournament.tournamentId}`
+                        }
+                        className="table-link"
+                      >
                         {tournament.tournamentName}
                       </Link>
                     </strong>
                   </td>
+                  <td>—</td>
                   <td>—</td>
                   <td>—</td>
                   <td><strong>{tournament.totalScore}</strong></td>
@@ -170,13 +220,30 @@ export default function ArcherProfilePage(): JSX.Element {
                   <td><strong>{tournament.totalTens}</strong></td>
                 </tr>
                 {tournament.events.map((event) => (
-                  <tr key={`event-${event.eventId}-${event.categoryName ?? 'uncat'}`} className="event-row">
+                  <tr
+                    key={`event-${event.eventId}-${event.categoryName ?? 'uncat'}`}
+                    className={`event-row ${event.countedInTournamentTotal ? '' : 'event-row-dropped'}`}
+                  >
                     <td>
                       <div style={{ paddingLeft: '2rem' }}>
-                        <Link to={`/events/${event.eventId}`} className="table-link">
+                        <Link
+                          to={
+                            tournament.tournamentId === tournamentId
+                              ? `/tournaments/${tournament.tournamentId}/categories/${categorySlug}/events/${event.eventId}`
+                              : `/tournaments/${tournament.tournamentId}/categories/${toCategorySlug(
+                                  event.categoryName ?? categoryLabel
+                                )}/events/${event.eventId}`
+                          }
+                          className="table-link"
+                        >
                           {event.eventName}
                         </Link>
                       </div>
+                    </td>
+                    <td>
+                      <span className={`badge ${event.countedInTournamentTotal ? '' : 'badge-muted'}`}>
+                        {event.countedInTournamentTotal ? 'Counted' : 'Dropped'}
+                      </span>
                     </td>
                     <td>{event.categoryName ?? '—'}</td>
                     <td>{event.ranking ?? '—'}</td>
@@ -221,4 +288,27 @@ export default function ArcherProfilePage(): JSX.Element {
       )}
     </section>
   );
+}
+
+function compareTournamentStartDateDesc(
+  aStartDate: string | null,
+  bStartDate: string | null,
+  aTournamentId: number,
+  bTournamentId: number
+): number {
+  const dateDelta = getSortTime(bStartDate) - getSortTime(aStartDate);
+  if (dateDelta !== 0) {
+    return dateDelta;
+  }
+
+  return bTournamentId - aTournamentId;
+}
+
+function getSortTime(value: string | null): number {
+  if (!value) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
 }

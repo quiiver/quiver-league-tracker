@@ -1,7 +1,5 @@
 import { Fragment } from 'react';
-import { useQueries } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
-import { fetchArcherProfile } from '../api/client';
 import { useCanonicalArcherProfile } from '../hooks/useCanonicalArcherProfile';
 
 export default function CanonicalArcherProfilePage(): JSX.Element {
@@ -11,17 +9,6 @@ export default function CanonicalArcherProfilePage(): JSX.Element {
     canonicalId,
     Number.isFinite(canonicalId)
   );
-
-  const linkedArcherProfiles = useQueries({
-    queries: (data?.linkedArchers ?? []).map((archer) => ({
-      queryKey: ['archerProfile', archer.id],
-      queryFn: () => fetchArcherProfile(archer.id),
-      enabled: !!data
-    }))
-  });
-
-  const allLinkedProfilesLoaded = linkedArcherProfiles.every((query) => query.isSuccess);
-  const linkedProfilesLoading = linkedArcherProfiles.some((query) => query.isLoading);
 
   if (!Number.isFinite(canonicalId)) {
     return <p className="text-muted">Invalid archer profile id.</p>;
@@ -39,108 +26,97 @@ export default function CanonicalArcherProfilePage(): JSX.Element {
     data.canonicalArcher.primaryFirstName ?? data.linkedArchers[0]?.firstName ?? ''
   } ${data.canonicalArcher.primaryLastName ?? data.linkedArchers[0]?.lastName ?? ''}`.trim();
   const averagePerArrow = data.totals.arrows > 0 ? data.totals.total / data.totals.arrows : 0;
-
-  const allEvents = allLinkedProfilesLoaded
-    ? linkedArcherProfiles.flatMap((query) =>
-        (query.data?.events ?? []).map((event) => ({
-          ...event,
-          sourceArcherId: query.data?.archer.id ?? null,
-          averagePerArrow: event.arrows > 0 ? event.total / event.arrows : 0
-        }))
-      )
-    : [];
-
-  type EventType = typeof allEvents[number];
-  type TournamentGroup = {
-    tournamentId: number;
-    tournamentName: string;
-    categories: Map<string, EventType[]>;
-  };
-
-  const tournamentGroups = allEvents.reduce<Record<number, TournamentGroup>>((acc, event) => {
-    const key = event.tournamentId;
-    if (!acc[key]) {
-      acc[key] = {
-        tournamentId: event.tournamentId,
-        tournamentName: event.tournamentName,
-        categories: new Map()
-      };
-    }
-
-    const categoryKey = event.categoryName ?? 'Uncategorized';
-    if (!acc[key].categories.has(categoryKey)) {
-      acc[key].categories.set(categoryKey, []);
-    }
-    acc[key].categories.get(categoryKey)!.push(event);
-
-    return acc;
-  }, {});
-
-  const tournamentSummaries = Object.values(tournamentGroups).map((tournament) => {
-    const allTournamentEvents: EventType[] = [];
-    const categorySummaries: Array<{
-      categoryName: string;
-      archerId: number | null;
-      place: number | null;
-      total: number;
-      average: number;
-      xCount: number;
-      tens: number;
-    }> = [];
-    let totalScore = 0;
-    let totalTens = 0;
-    let totalXs = 0;
-    let eventCount = 0;
-
-    tournament.categories.forEach((categoryEvents, categoryName) => {
-      const sorted = [...categoryEvents].sort((a, b) => b.total - a.total);
-      const best4 = sorted.slice(0, 4);
-      const archerId = categoryEvents.find((event) => event.sourceArcherId !== null)?.sourceArcherId ?? null;
-      const latestEvent = [...categoryEvents].sort((a, b) => b.eventId - a.eventId)[0];
-      const finalEventRank = latestEvent?.ranking ?? null;
-
-      const categoryTotal = best4.reduce((sum, event) => sum + event.total, 0);
-      const categoryTens = best4.reduce((sum, event) => sum + event.tens, 0);
-      const categoryXs = best4.reduce((sum, event) => sum + event.xCount, 0);
-      const categoryCount = best4.length;
-
-      categorySummaries.push({
-        categoryName,
-        archerId,
-        place: finalEventRank,
-        total: categoryTotal,
-        average: categoryCount > 0 ? categoryTotal / categoryCount : 0,
-        xCount: categoryXs,
-        tens: categoryTens
-      });
-
-      allTournamentEvents.push(...categoryEvents);
-
-      best4.forEach((event) => {
-        totalScore += event.total;
-        totalTens += event.tens;
-        totalXs += event.xCount;
-        eventCount++;
-      });
+  const categoryBreakdown = Array.from(
+    data.tournaments.reduce((accumulator, tournament) => {
+      for (const category of tournament.categories) {
+        const existing = accumulator.get(category.categoryName);
+        if (existing) {
+          existing.tournamentTotal += category.totals.total;
+          existing.tens += category.totals.tens;
+          existing.xCount += category.totals.xCount;
+          existing.arrows += category.totals.arrows;
+          existing.events += category.includedEvents;
+          existing.tournaments += 1;
+        } else {
+          accumulator.set(category.categoryName, {
+            categoryName: category.categoryName,
+            tournamentTotal: category.totals.total,
+            tens: category.totals.tens,
+            xCount: category.totals.xCount,
+            arrows: category.totals.arrows,
+            events: category.includedEvents,
+            tournaments: 1
+          });
+        }
+      }
+      return accumulator;
+    }, new Map<
+      string,
+      {
+        categoryName: string;
+        tournamentTotal: number;
+        tens: number;
+        xCount: number;
+        arrows: number;
+        events: number;
+        tournaments: number;
+      }
+    >())
+  )
+    .map(([, category]) => ({
+      ...category,
+      tournamentAverage:
+        category.tournaments > 0 ? category.tournamentTotal / category.tournaments : 0,
+      averagePerArrow: category.arrows > 0 ? category.tournamentTotal / category.arrows : 0
+    }))
+    .sort((a, b) => {
+      if (b.tournamentAverage !== a.tournamentAverage) {
+        return b.tournamentAverage - a.tournamentAverage;
+      }
+      return a.categoryName.localeCompare(b.categoryName);
     });
-
-    return {
-      ...tournament,
-      categories: categorySummaries,
-      totalScore,
-      totalTens,
-      totalXs,
-      eventCount,
-      average: eventCount > 0 ? totalScore / eventCount : 0
-    };
-  });
 
   return (
     <div className="container">
       <h1>{displayName}</h1>
+      <p className="text-muted">
+        Combined career profile #{data.canonicalArcher.id} · Built from {data.combinedProfile.linkedRecords}{' '}
+        linked category{data.combinedProfile.linkedRecords === 1 ? ' record' : ' records'}
+      </p>
 
       <section>
-        <h2>Overall Statistics</h2>
+        <h2>Profile</h2>
+        <div className="stats-grid">
+          <div className="stat-box">
+            <div className="stat-label">Categories Represented</div>
+            <div className="stat-value stat-value-small">
+              {data.combinedProfile.categoriesRepresented.length > 0
+                ? data.combinedProfile.categoriesRepresented.join(', ')
+                : 'Uncategorized'}
+            </div>
+          </div>
+          <div className="stat-box">
+            <div className="stat-label">Tournaments Represented</div>
+            <div className="stat-value">{data.combinedProfile.tournamentsRepresented}</div>
+          </div>
+          <div className="stat-box">
+            <div className="stat-label">Linked Category Records</div>
+            <div className="stat-value">{data.combinedProfile.linkedRecords}</div>
+          </div>
+          <div className="stat-box">
+            <div className="stat-label">Teams Represented</div>
+            <div className="stat-value stat-value-small">
+              {data.combinedProfile.teamsRepresented.length > 0
+                ? data.combinedProfile.teamsRepresented.join(', ')
+                : '—'}
+            </div>
+          </div>
+        </div>
+        <p className="text-muted">{data.combinedProfile.aggregationRule}</p>
+      </section>
+
+      <section>
+        <h2>Career Totals</h2>
         <div className="stats-grid">
           <div className="stat-box">
             <div className="stat-label">Total Score</div>
@@ -170,10 +146,41 @@ export default function CanonicalArcherProfilePage(): JSX.Element {
       </section>
 
       <section>
-        <h2>Tournament & Event History</h2>
-        {linkedProfilesLoading ? (
-          <p className="text-muted">Loading event details…</p>
-        ) : tournamentSummaries.length === 0 ? (
+        <h2>Category Breakdown</h2>
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Tournaments</th>
+                <th>Tournament Average</th>
+                <th>Avg/Arrow</th>
+                <th>Xs</th>
+                <th>10s</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categoryBreakdown.map((category) => (
+                <tr key={category.categoryName}>
+                  <td>{category.categoryName}</td>
+                  <td>{category.tournaments}</td>
+                  <td>{category.tournamentAverage.toFixed(1)}</td>
+                  <td>{category.averagePerArrow.toFixed(2)}</td>
+                  <td>{category.xCount}</td>
+                  <td>{category.tens}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Tournament History</h2>
+        <p className="text-muted">
+          Tournament rows combine the linked category records included below.
+        </p>
+        {data.tournaments.length === 0 ? (
           <p className="text-muted">No event results available yet.</p>
         ) : (
           <div className="table-container">
@@ -189,49 +196,49 @@ export default function CanonicalArcherProfilePage(): JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {tournamentSummaries.map((tournament) => (
-                  <Fragment key={`group-${tournament.tournamentId}`}>
+                {data.tournaments.map((tournament) => (
+                  <Fragment key={`tournament-${tournament.tournamentId}`}>
                     <tr className="tournament-row">
                       <td>
                         <strong>
-                          <Link to={`/tournaments/${tournament.tournamentId}/overall`} className="table-link">
+                          <Link to={`/tournaments/${tournament.tournamentId}`} className="table-link">
                             {tournament.tournamentName}
                           </Link>
                         </strong>
                       </td>
                       <td>—</td>
                       <td>
-                        <strong>{tournament.totalScore}</strong>
+                        <strong>{tournament.totals.total}</strong>
                       </td>
                       <td>
                         <strong>{tournament.average.toFixed(1)}</strong>
                       </td>
                       <td>
-                        <strong>{tournament.totalXs}</strong>
+                        <strong>{tournament.totals.xCount}</strong>
                       </td>
                       <td>
-                        <strong>{tournament.totalTens}</strong>
+                        <strong>{tournament.totals.tens}</strong>
                       </td>
                     </tr>
                     {tournament.categories.map((category) => (
                       <tr
-                        key={`category-${tournament.tournamentId}-${category.categoryName}-${category.archerId ?? 'unknown'}`}
+                        key={`category-${tournament.tournamentId}-${category.categoryName}-${category.sourceArcherId ?? 'unknown'}`}
                         className="event-row"
                       >
                         <td style={{ paddingLeft: '2rem' }}>
-                          {category.archerId ? (
-                            <Link to={`/archers/${category.archerId}`} className="table-link">
+                          {category.sourceArcherId ? (
+                            <Link to={`/archers/${category.sourceArcherId}`} className="table-link">
                               {category.categoryName}
                             </Link>
                           ) : (
                             category.categoryName
                           )}
                         </td>
-                        <td>{category.place ?? '—'}</td>
-                        <td>{category.total}</td>
+                        <td>{category.latestRanking ?? '—'}</td>
+                        <td>{category.totals.total}</td>
                         <td>{category.average.toFixed(1)}</td>
-                        <td>{category.xCount}</td>
-                        <td>{category.tens}</td>
+                        <td>{category.totals.xCount}</td>
+                        <td>{category.totals.tens}</td>
                       </tr>
                     ))}
                   </Fragment>

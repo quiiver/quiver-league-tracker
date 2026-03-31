@@ -14,6 +14,14 @@ import {
   LeaderboardService,
   getPrismaClient
 } from '@archeryleague/core';
+import {
+  clearAdminSessionCookie,
+  createAdminSessionCookie,
+  isAdminAuthenticated,
+  isAdminConfigured,
+  requireAdminAuth,
+  verifyAdminPassword
+} from './adminAuth';
 import { hasStaticBundle, STATIC_DIR } from './env';
 
 const ingestionService = new IngestionService();
@@ -21,6 +29,16 @@ const leaderboardService = new LeaderboardService();
 const prisma = getPrismaClient();
 
 const IdParamSchema = z.object({ id: z.coerce.number() });
+const CanonicalLinkBodySchema = z.object({
+  archerId: z.coerce.number(),
+  canonicalArcherId: z.coerce.number()
+});
+const CanonicalUnlinkBodySchema = z.object({
+  archerId: z.coerce.number()
+});
+const AdminLoginBodySchema = z.object({
+  password: z.string().min(1)
+});
 
 export async function buildServer(): Promise<FastifyInstance> {
   const base = Fastify({ logger: true });
@@ -40,6 +58,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   app.post(
     '/api/tournaments/:id/sync',
     {
+      preHandler: requireAdminAuth,
       schema: {
         params: IdParamSchema,
         response: {
@@ -51,11 +70,8 @@ export async function buildServer(): Promise<FastifyInstance> {
         }
       }
     },
-    async (
-      request: FastifyRequest<{ Params: z.infer<typeof IdParamSchema> }>,
-      reply: FastifyReply
-    ) => {
-      const { id } = request.params;
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { id } = IdParamSchema.parse(request.params);
       const result = await ingestionService.syncTournament(id);
       return reply.code(202).send({
         tournamentId: result.tournamentId,
@@ -66,8 +82,49 @@ export async function buildServer(): Promise<FastifyInstance> {
   );
 
   app.post(
+    '/api/tournaments/sync-all',
+    {
+      preHandler: requireAdminAuth,
+      schema: {
+        response: {
+          202: z.object({
+            tournamentIds: z.array(z.number()),
+            syncedTournamentCount: z.number(),
+            syncedEventCount: z.number(),
+            syncedAt: z.string()
+          })
+        }
+      }
+    },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      const result = await ingestionService.syncAllTrackedTournaments();
+      return reply.code(202).send({
+        tournamentIds: result.tournamentIds,
+        syncedTournamentCount: result.syncedTournamentCount,
+        syncedEventCount: result.syncedEventCount,
+        syncedAt: result.syncedAt.toISOString()
+      });
+    }
+  );
+
+  app.delete(
+    '/api/tournaments/:id',
+    {
+      preHandler: requireAdminAuth,
+      schema: {
+        params: IdParamSchema
+      }
+    },
+    async (request: FastifyRequest) => {
+      const { id } = IdParamSchema.parse(request.params);
+      return ingestionService.deleteTournament(id);
+    }
+  );
+
+  app.post(
     '/api/events/:id/sync',
     {
+      preHandler: requireAdminAuth,
       schema: {
         params: IdParamSchema.extend({ id: z.coerce.number() }),
         querystring: z.object({ tournamentId: z.coerce.number().optional() }),
@@ -81,21 +138,64 @@ export async function buildServer(): Promise<FastifyInstance> {
         }
       }
     },
-    async (
-      request: FastifyRequest<{
-        Params: z.infer<typeof IdParamSchema>;
-        Querystring: { tournamentId?: number };
-      }>,
-      reply: FastifyReply
-    ) => {
-      const { id } = request.params;
-      const { tournamentId } = request.query;
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { id } = IdParamSchema.parse(request.params);
+      const { tournamentId } = z.object({ tournamentId: z.coerce.number().optional() }).parse(
+        request.query
+      );
       const result = await ingestionService.syncEvent(id, { tournamentId });
       return reply.code(202).send({
         eventId: result.eventId,
         participants: result.participants,
         scores: result.scores,
         syncedAt: result.syncedAt.toISOString()
+      });
+    }
+  );
+
+  app.get(
+    '/api/admin/session',
+    async (request: FastifyRequest) => {
+      return {
+        authenticated: isAdminAuthenticated(request),
+        configured: isAdminConfigured()
+      };
+    }
+  );
+
+  app.post(
+    '/api/admin/login',
+    {
+      schema: {
+        body: AdminLoginBodySchema
+      }
+    },
+    async (
+      request: FastifyRequest<{
+        Body: z.infer<typeof AdminLoginBodySchema>;
+      }>,
+      reply: FastifyReply
+    ) => {
+      if (!isAdminConfigured()) {
+        return reply.status(503).send({ message: 'Admin authentication is not configured' });
+      }
+
+      if (!verifyAdminPassword(request.body.password)) {
+        return reply.status(401).send({ message: 'Invalid admin password' });
+      }
+
+      reply.header('Set-Cookie', createAdminSessionCookie());
+      return reply.send({ authenticated: true, configured: true });
+    }
+  );
+
+  app.post(
+    '/api/admin/logout',
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      reply.header('Set-Cookie', clearAdminSessionCookie());
+      return reply.send({
+        authenticated: false,
+        configured: isAdminConfigured()
       });
     }
   );
@@ -156,6 +256,58 @@ export async function buildServer(): Promise<FastifyInstance> {
     async (request: FastifyRequest<{ Params: z.infer<typeof IdParamSchema> }>) => {
       const { id } = request.params;
       return leaderboardService.getCanonicalArcherProfile(id);
+    }
+  );
+
+  app.get(
+    '/api/admin/canonical-archers/suspicious',
+    {
+      preHandler: requireAdminAuth
+    },
+    async () => {
+      return ingestionService.listSuspiciousCanonicalArchers();
+    }
+  );
+
+  app.get(
+    '/api/admin/canonical-archers/:id/inspect',
+    {
+      preHandler: requireAdminAuth,
+      schema: {
+        params: IdParamSchema
+      }
+    },
+    async (request: FastifyRequest) => {
+      const { id } = IdParamSchema.parse(request.params);
+      return ingestionService.inspectCanonicalArcher(id);
+    }
+  );
+
+  app.post(
+    '/api/admin/canonical-archers/link',
+    {
+      preHandler: requireAdminAuth,
+      schema: {
+        body: CanonicalLinkBodySchema
+      }
+    },
+    async (request: FastifyRequest) => {
+      const { archerId, canonicalArcherId } = CanonicalLinkBodySchema.parse(request.body);
+      return ingestionService.assignArcherToCanonical(archerId, canonicalArcherId);
+    }
+  );
+
+  app.post(
+    '/api/admin/canonical-archers/unlink',
+    {
+      preHandler: requireAdminAuth,
+      schema: {
+        body: CanonicalUnlinkBodySchema
+      }
+    },
+    async (request: FastifyRequest) => {
+      const { archerId } = CanonicalUnlinkBodySchema.parse(request.body);
+      return ingestionService.detachArcherFromCanonical(archerId);
     }
   );
 

@@ -3,9 +3,13 @@ import type { LeaderboardEntry } from '../api/types';
 
 interface LeaderboardTableProps {
   data: LeaderboardEntry[];
+  getArcherLink?: (entry: LeaderboardEntry) => string;
 }
 
-export default function LeaderboardTable({ data }: LeaderboardTableProps): JSX.Element {
+export default function LeaderboardTable({
+  data,
+  getArcherLink
+}: LeaderboardTableProps): JSX.Element {
   return (
     <div className="table-container">
       <table>
@@ -26,9 +30,7 @@ export default function LeaderboardTable({ data }: LeaderboardTableProps): JSX.E
             <tr key={entry.archerId}>
               <td>{entry.rank}</td>
               <td>
-                <Link
-                  to={entry.canonicalArcherId ? `/profiles/${entry.canonicalArcherId}` : `/archers/${entry.archerId}`}
-                >
+                <Link to={getArcherLink ? getArcherLink(entry) : getDefaultArcherLink(entry)}>
                   {entry.fullName}
                 </Link>
               </td>
@@ -44,6 +46,10 @@ export default function LeaderboardTable({ data }: LeaderboardTableProps): JSX.E
       </table>
     </div>
   );
+}
+
+function getDefaultArcherLink(entry: LeaderboardEntry): string {
+  return entry.canonicalArcherId ? `/profiles/${entry.canonicalArcherId}` : `/archers/${entry.archerId}`;
 }
 
 function renderTrend(trend: number | null): JSX.Element {

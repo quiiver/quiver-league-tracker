@@ -1,0 +1,3 @@
+ALTER TABLE "Event" ADD COLUMN "roundsCount" INTEGER;
+ALTER TABLE "Event" ADD COLUMN "endsPerRound" INTEGER;
+ALTER TABLE "Event" ADD COLUMN "arrowsPerEnd" INTEGER;

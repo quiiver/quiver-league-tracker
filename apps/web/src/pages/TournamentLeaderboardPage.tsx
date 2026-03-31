@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import LeaderboardTable from '../components/LeaderboardTable';
 import { useTournamentLeaderboard } from '../hooks/useTournamentLeaderboard';
@@ -12,6 +12,13 @@ export default function TournamentLeaderboardPage(): JSX.Element {
     Number.isFinite(tournamentId)
   );
   const [dropLowestTwo, setDropLowestTwo] = useState(false);
+  const totalEvents = data?.tournament.events.length ?? 0;
+  const shouldDefaultToTopFour = totalEvents > 4;
+
+  useEffect(() => {
+    setDropLowestTwo(shouldDefaultToTopFour);
+  }, [shouldDefaultToTopFour, tournamentId]);
+
   const adjustedLeaderboard = useMemo(() => {
     const entries = data?.leaderboard ?? [];
     return dropLowestTwo ? applyDropLowestRule(entries, 2) : entries;
@@ -38,7 +45,7 @@ export default function TournamentLeaderboardPage(): JSX.Element {
       </p>
       <div style={{ marginBottom: '1.5rem' }}>
         <Link className="badge" to={`/tournaments/${data.tournament.id}`}>
-          View category leaderboards
+          Tournament dashboard
         </Link>
       </div>
 
@@ -49,7 +56,11 @@ export default function TournamentLeaderboardPage(): JSX.Element {
           onClick={() => setDropLowestTwo((value) => !value)}
           aria-pressed={dropLowestTwo}
         >
-          {dropLowestTwo ? 'Showing best 4 of 6 events' : 'Drop lowest two event scores'}
+          {dropLowestTwo
+            ? `Showing top 4 of ${Math.max(totalEvents, 4)} events`
+            : totalEvents > 4
+              ? `Show all ${totalEvents} events`
+              : 'Top 4 filter not needed'}
         </button>
       </div>
 

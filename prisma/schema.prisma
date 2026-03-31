@@ -26,6 +26,9 @@ model Event {
   name          String
   eventType     String?
   displayOrder  Int?
+  roundsCount   Int?
+  endsPerRound  Int?
+  arrowsPerEnd  Int?
   updatedAt     DateTime?
   lastSyncedAt  DateTime?
   createdAt     DateTime         @default(now())

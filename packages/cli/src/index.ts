@@ -9,7 +9,9 @@ import {
   LeaderboardService,
   type TournamentLeaderboardResponse,
   type EventLeaderboardResponse,
-  type ArcherProfileResponse
+  type ArcherProfileResponse,
+  type CanonicalInspectionResult,
+  type SuspiciousCanonicalProfile
 } from '@archeryleague/core';
 
 loadEnv();
@@ -95,6 +97,92 @@ program
       );
     } catch (error) {
       spinner.fail(`Failed to delete tournament ${tournamentId}`);
+      handleError(error);
+    }
+  });
+
+program
+  .command('canonical:inspect')
+  .argument('<canonicalArcherId>', 'Canonical archer identifier')
+  .description('Inspect a canonical profile and its linked archers')
+  .action(async (canonicalArcherIdText: string) => {
+    const canonicalArcherId = Number.parseInt(canonicalArcherIdText, 10);
+    if (Number.isNaN(canonicalArcherId)) {
+      throw new Error('canonicalArcherId must be numeric');
+    }
+
+    const spinner = ora('Inspecting canonical profile…').start();
+    try {
+      const inspection = await ingestionService.inspectCanonicalArcher(canonicalArcherId);
+      spinner.stop();
+      printCanonicalInspection(inspection);
+    } catch (error) {
+      spinner.fail('Unable to inspect canonical profile');
+      handleError(error);
+    }
+  });
+
+program
+  .command('canonical:link')
+  .argument('<archerId>', 'Archer identifier')
+  .argument('<canonicalArcherId>', 'Canonical archer identifier')
+  .description('Manually link an archer record to a canonical profile')
+  .action(async (archerIdText: string, canonicalArcherIdText: string) => {
+    const archerId = Number.parseInt(archerIdText, 10);
+    const canonicalArcherId = Number.parseInt(canonicalArcherIdText, 10);
+    if (Number.isNaN(archerId) || Number.isNaN(canonicalArcherId)) {
+      throw new Error('archerId and canonicalArcherId must be numeric');
+    }
+
+    const spinner = ora(`Linking archer ${archerId} to canonical profile ${canonicalArcherId}…`).start();
+    try {
+      const result = await ingestionService.assignArcherToCanonical(archerId, canonicalArcherId);
+      spinner.succeed(
+        `Linked archer ${result.archerId} to canonical ${result.canonicalArcherId} (${result.linkMethod})`
+      );
+    } catch (error) {
+      spinner.fail(`Failed to link archer ${archerId}`);
+      handleError(error);
+    }
+  });
+
+program
+  .command('canonical:unlink')
+  .argument('<archerId>', 'Archer identifier')
+  .description('Detach an archer record from its current canonical profile')
+  .action(async (archerIdText: string) => {
+    const archerId = Number.parseInt(archerIdText, 10);
+    if (Number.isNaN(archerId)) {
+      throw new Error('archerId must be numeric');
+    }
+
+    const spinner = ora(`Detaching archer ${archerId} from canonical profile…`).start();
+    try {
+      const result = await ingestionService.detachArcherFromCanonical(archerId);
+      if (!result.detached) {
+        spinner.warn(`Archer ${archerId} was not linked to a canonical profile`);
+        return;
+      }
+      spinner.succeed(
+        `Detached archer ${result.archerId} from canonical ${result.previousCanonicalArcherId}`
+      );
+    } catch (error) {
+      spinner.fail(`Failed to detach archer ${archerId}`);
+      handleError(error);
+    }
+  });
+
+program
+  .command('canonical:suspicious')
+  .description('List canonical profiles that may need manual review')
+  .action(async () => {
+    const spinner = ora('Scanning canonical profiles…').start();
+    try {
+      const suspicious = await ingestionService.listSuspiciousCanonicalArchers();
+      spinner.stop();
+      printSuspiciousCanonicalProfiles(suspicious);
+    } catch (error) {
+      spinner.fail('Unable to scan canonical profiles');
       handleError(error);
     }
   });
@@ -234,6 +322,60 @@ function printArcherProfile(data: ArcherProfileResponse): void {
   console.log(table.toString());
 }
 
+function printCanonicalInspection(data: CanonicalInspectionResult): void {
+  const name = `${data.canonicalArcher.primaryFirstName ?? ''} ${data.canonicalArcher.primaryLastName ?? ''}`.trim();
+  console.log(chalk.bold(`\nCanonical #${data.canonicalArcher.id} — ${name || 'Unknown'}`));
+  console.log(`Normalized key: ${data.canonicalArcher.normalizedKey}`);
+  console.log(`Primary team: ${data.canonicalArcher.primaryTeam ?? '—'}`);
+  console.log(
+    `Linked archers: ${data.canonicalArcher.linkedArchers} | Scores: ${data.canonicalArcher.totalScores} | Tournaments: ${data.canonicalArcher.tournamentsShot}`
+  );
+
+  const table = new Table({
+    head: ['Archer ID', 'Name', 'Team', 'Condition', 'Events', 'Link Method', 'Updated'],
+    style: { head: ['cyan'] }
+  });
+
+  for (const archer of data.archers) {
+    table.push([
+      archer.id,
+      `${archer.firstName} ${archer.lastName}`.trim(),
+      archer.team ?? '—',
+      archer.conditionCode ?? '—',
+      archer.eventsShot,
+      archer.canonicalLinkMethod ?? '—',
+      formatDateTime(archer.canonicalLinkUpdatedAt)
+    ]);
+  }
+
+  console.log(table.toString());
+}
+
+function printSuspiciousCanonicalProfiles(rows: SuspiciousCanonicalProfile[]): void {
+  if (rows.length === 0) {
+    console.log(chalk.green('\nNo suspicious canonical profiles found.'));
+    return;
+  }
+
+  const table = new Table({
+    head: ['Canonical ID', 'Name', 'Linked', 'Teams', 'Reasons'],
+    style: { head: ['cyan'] }
+  });
+
+  for (const row of rows) {
+    table.push([
+      row.canonicalArcherId,
+      row.displayName,
+      row.linkedArchers,
+      row.teams.length > 0 ? row.teams.join(', ') : '—',
+      row.reasons.join('; ')
+    ]);
+  }
+
+  console.log(chalk.bold('\nSuspicious Canonical Profiles'));
+  console.log(table.toString());
+}
+
 function formatTrend(trend: number | null): string {
   if (trend === null) {
     return '—';
@@ -246,6 +388,10 @@ function formatTrend(trend: number | null): string {
   const color = trend > 0 ? chalk.green : chalk.red;
   const sign = trend > 0 ? '+' : '';
   return color(`${sign}${trend}`);
+}
+
+function formatDateTime(value: Date | null): string {
+  return value ? value.toISOString() : '—';
 }
 
 function handleError(error: unknown): never {

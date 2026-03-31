@@ -9,6 +9,13 @@ export type {
   EventBreakdown,
   ScoreSummary
 } from './services/types';
+export type {
+  CanonicalInspectionResult,
+  CanonicalLinkResult,
+  CanonicalUnlinkResult,
+  SyncAllTournamentsResult,
+  SuspiciousCanonicalProfile
+} from './services/ingestionService';
 export { parseScoreString } from './scoring/scoreParser';
 export { ResultsApiClient } from './http/resultsApiClient';
 export { getPrismaClient } from './db/client';
